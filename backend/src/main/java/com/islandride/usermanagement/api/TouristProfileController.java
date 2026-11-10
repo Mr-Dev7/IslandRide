@@ -37,3 +37,4 @@ public class TouristProfileController {
         return ResponseEntity.ok(updated);
     }
 }
+

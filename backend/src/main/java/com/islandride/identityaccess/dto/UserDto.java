@@ -12,3 +12,4 @@ public record UserDto(
         List<String> roles,
         Long businessId
 ) {}
+

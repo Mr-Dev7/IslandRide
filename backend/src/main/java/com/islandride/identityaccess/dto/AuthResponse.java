@@ -10,3 +10,4 @@ public record AuthResponse(
         return new AuthResponse(accessToken, "Bearer", expiresIn, user);
     }
 }
+

@@ -184,6 +184,95 @@ class AuthorizationAndTenantIsolationTest {
         assertThat(tenantSecurityService.hasBusinessAccess(savedBusiness.getId())).isFalse();
     }
 
+    @Test
+    @DisplayName("Multi-Tenant Isolation: Partner A cannot access or modify Partner B's business resources")
+    void testPartnerTenantIsolationCrossAccessPrevented() throws Exception {
+        String suffixA = UUID.randomUUID().toString().substring(0, 6);
+        String suffixB = UUID.randomUUID().toString().substring(0, 6);
+
+        // 1. Register Partner A
+        PartnerRegisterRequest regReqA = new PartnerRegisterRequest(
+                "partner_a_" + suffixA + "@test.com",
+                "Password123!",
+                "PartnerA",
+                "Owner",
+                "+9198" + suffixA.replaceAll("[^0-9]", "1") + "1111",
+                "Legal Firm A",
+                "Rentals A",
+                null,
+                null
+        );
+        mockMvc.perform(post("/api/v1/partners/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(regReqA)))
+                .andExpect(status().isCreated());
+
+        User partnerUserA = userRepository.findByEmail("partner_a_" + suffixA + "@test.com").orElseThrow();
+        Business businessA = businessRepository.findByOwnerUserId(partnerUserA.getId()).orElseThrow();
+
+        // 2. Register Partner B
+        PartnerRegisterRequest regReqB = new PartnerRegisterRequest(
+                "partner_b_" + suffixB + "@test.com",
+                "Password123!",
+                "PartnerB",
+                "Owner",
+                "+9198" + suffixB.replaceAll("[^0-9]", "2") + "2222",
+                "Legal Firm B",
+                "Rentals B",
+                null,
+                null
+        );
+        mockMvc.perform(post("/api/v1/partners/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(regReqB)))
+                .andExpect(status().isCreated());
+
+        User partnerUserB = userRepository.findByEmail("partner_b_" + suffixB + "@test.com").orElseThrow();
+        Business businessB = businessRepository.findByOwnerUserId(partnerUserB.getId()).orElseThrow();
+
+        // 3. Establish security context as Partner A
+        UserPrincipal principalA = UserPrincipal.create(partnerUserA, businessA.getId());
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(principalA, null, principalA.getAuthorities())
+        );
+
+        // TenantSecurityService checks:
+        // Partner A has access to Business A
+        assertThat(tenantSecurityService.hasBusinessAccess(businessA.getId())).isTrue();
+        // Partner A STRICTLY has NO access to Business B
+        assertThat(tenantSecurityService.hasBusinessAccess(businessB.getId())).isFalse();
+        // Partner A cannot manage Business B's inventory
+        assertThat(tenantSecurityService.isAuthorizedForBusinessInventory(businessB.getId())).isFalse();
+
+        // 4. API endpoint verification: Calling /api/v1/partners/me with Partner A's token
+        String tokenA = jwtTokenProvider.generateAccessToken(principalA);
+        mockMvc.perform(get("/api/v1/partners/me")
+                        .header("Authorization", "Bearer " + tokenA))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tradeName").value("Rentals A"))
+                .andExpect(jsonPath("$.legalName").value("Legal Firm A"));
+    }
+
+    @Test
+    @DisplayName("Role Enforcement: SUPPORT_AGENT can view users but cannot verify or approve partner businesses")
+    void testSupportAgentCannotVerifyPartner() throws Exception {
+        User supportUser = createTestUser("support_" + UUID.randomUUID().toString().substring(0, 6) + "@test.com", RoleType.ROLE_SUPPORT_AGENT);
+        UserPrincipal supportPrincipal = UserPrincipal.create(supportUser, null);
+        String supportToken = jwtTokenProvider.generateAccessToken(supportPrincipal);
+
+        // Support agent CAN list users (read-only for support triage)
+        mockMvc.perform(get("/api/v1/admin/users")
+                        .header("Authorization", "Bearer " + supportToken))
+                .andExpect(status().isOk());
+
+        // Support agent CANNOT verify partner businesses (restricted to SUPER_ADMIN / OPERATIONS_ADMIN)
+        mockMvc.perform(post("/api/v1/admin/partners/1/verify")
+                        .header("Authorization", "Bearer " + supportToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"APPROVED\"}"))
+                .andExpect(status().isForbidden());
+    }
+
     private User createTestUser(String email, RoleType roleType) {
         Role role = roleRepository.findByName(roleType.name()).orElseThrow();
         User user = new User();

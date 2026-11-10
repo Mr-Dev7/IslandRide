@@ -60,3 +60,4 @@ public class AdminManagementController {
         return ResponseEntity.ok(adminManagementService.verifyPartnerBusiness(businessId, status, rejectionReason));
     }
 }
+

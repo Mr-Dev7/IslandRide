@@ -13,3 +13,4 @@ WHERE name = 'ROLE_CUSTOMER_SUPPORT';
 ALTER TABLE refresh_tokens 
     ADD COLUMN family_id VARCHAR(36) NOT NULL AFTER user_id,
     ADD INDEX idx_refresh_tokens_family (family_id);
+

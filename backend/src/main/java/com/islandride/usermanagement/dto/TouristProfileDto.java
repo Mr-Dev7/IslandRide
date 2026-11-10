@@ -10,3 +10,4 @@ public record TouristProfileDto(
         String nationality,
         String verificationStatus
 ) {}
+

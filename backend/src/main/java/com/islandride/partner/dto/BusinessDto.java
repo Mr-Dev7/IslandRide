@@ -12,3 +12,4 @@ public record BusinessDto(
         String rejectionReason,
         BigDecimal commissionRate
 ) {}
+

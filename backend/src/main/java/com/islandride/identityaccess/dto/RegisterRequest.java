@@ -25,3 +25,4 @@ public record RegisterRequest(
         @Pattern(regexp = "^$|^[+0-9]{10,15}$", message = "Phone must be a valid phone number")
         String phone
 ) {}
+

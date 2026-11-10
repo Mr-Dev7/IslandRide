@@ -141,3 +141,4 @@ public class UserPrincipal implements UserDetails {
         return status != UserStatus.DISABLED && status != UserStatus.SUSPENDED;
     }
 }
+

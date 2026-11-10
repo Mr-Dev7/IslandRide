@@ -80,9 +80,13 @@ public class AuthController {
     @PostMapping("/logout")
     @Operation(summary = "Revoke refresh token and clear HttpOnly cookie")
     public ResponseEntity<Map<String, String>> logout(HttpServletRequest request,
-                                                      HttpServletResponse response) {
+                                                      HttpServletResponse response,
+                                                      @RequestBody(required = false) Map<String, String> body) {
         String rawRefreshToken = extractRefreshCookie(request);
-        if (rawRefreshToken != null) {
+        if (rawRefreshToken == null && body != null && body.containsKey("refreshToken")) {
+            rawRefreshToken = body.get("refreshToken");
+        }
+        if (rawRefreshToken != null && !rawRefreshToken.isBlank()) {
             authService.logout(rawRefreshToken);
         }
         clearRefreshCookie(response);
@@ -164,3 +168,4 @@ public class AuthController {
         return null;
     }
 }
+

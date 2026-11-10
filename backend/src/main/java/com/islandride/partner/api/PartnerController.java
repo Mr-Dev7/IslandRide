@@ -48,3 +48,4 @@ public class PartnerController {
         return ResponseEntity.ok(updated);
     }
 }
+
