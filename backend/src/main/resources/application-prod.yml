@@ -35,6 +35,7 @@ islandride:
       name: ${REFRESH_COOKIE_NAME:__Host-refresh_token}
       secure: true
       same-site: Strict
+      path: ${COOKIE_PATH:/}
     cors:
       allowed-origins: ${CORS_ALLOWED_ORIGINS}
   mail:

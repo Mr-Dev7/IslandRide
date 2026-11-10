@@ -47,6 +47,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @ActiveProfiles("local")
 @org.springframework.transaction.annotation.Transactional
+@org.springframework.test.annotation.DirtiesContext
 class AuthenticationIntegrationTest {
 
     @Autowired
@@ -112,6 +113,7 @@ class AuthenticationIntegrationTest {
                 .andExpect(jsonPath("$.tokenType").value("Bearer"))
                 .andExpect(cookie().exists("refresh_token"))
                 .andExpect(cookie().httpOnly("refresh_token", true))
+                .andExpect(cookie().path("refresh_token", "/"))
                 .andReturn();
 
         Cookie refreshCookie = loginResult.getResponse().getCookie("refresh_token");
@@ -162,7 +164,8 @@ class AuthenticationIntegrationTest {
                         .with(csrf())
                         .cookie(rotatedRefreshCookie))
                 .andExpect(status().isOk())
-                .andExpect(cookie().maxAge("refresh_token", 0));
+                .andExpect(cookie().maxAge("refresh_token", 0))
+                .andExpect(cookie().path("refresh_token", "/"));
     }
 
     @Test
@@ -224,12 +227,14 @@ class AuthenticationIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isForbidden());
 
-        // Calling /refresh WITH csrf() token -> succeeds with 200 OK
+        // Calling /refresh WITH Spring test csrf() helper -> succeeds with 200 OK
         mockMvc.perform(post("/api/v1/auth/refresh")
                         .with(csrf())
                         .cookie(refreshCookie)
                         .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(cookie().exists("refresh_token"))
+                .andExpect(cookie().path("refresh_token", "/"));
     }
 
     @Test
@@ -263,7 +268,8 @@ class AuthenticationIntegrationTest {
                         .with(csrf())
                         .cookie(refreshCookie))
                 .andExpect(status().isOk())
-                .andExpect(cookie().maxAge("refresh_token", 0));
+                .andExpect(cookie().maxAge("refresh_token", 0))
+                .andExpect(cookie().path("refresh_token", "/"));
 
         // Verify token in database is marked revoked
         String tokenHash = RefreshTokenService.hashToken(rawToken);

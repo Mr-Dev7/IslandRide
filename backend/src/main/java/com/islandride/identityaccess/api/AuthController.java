@@ -38,6 +38,9 @@ public class AuthController {
     @Value("${islandride.security.cookie.same-site:Lax}")
     private String cookieSameSite;
 
+    @Value("${islandride.security.cookie.path:/}")
+    private String cookiePath;
+
     public AuthController(AuthService authService) {
         this.authService = authService;
     }
@@ -139,7 +142,7 @@ public class AuthController {
                 .httpOnly(true)
                 .secure(cookieSecure)
                 .sameSite(cookieSameSite)
-                .path("/api/v1/auth")
+                .path(cookiePath)
                 .maxAge(Duration.ofDays(7))
                 .build();
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
@@ -150,7 +153,7 @@ public class AuthController {
                 .httpOnly(true)
                 .secure(cookieSecure)
                 .sameSite(cookieSameSite)
-                .path("/api/v1/auth")
+                .path(cookiePath)
                 .maxAge(0)
                 .build();
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
