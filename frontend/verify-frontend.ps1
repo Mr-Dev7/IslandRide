@@ -41,3 +41,4 @@ Write-Output "Contains <app-root>: $hasAppRoot"
 
 Write-Output ""
 Write-Output "[INFO] Frontend verification complete. Server PID: $($proc.Id)"
+

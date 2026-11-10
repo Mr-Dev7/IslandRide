@@ -54,3 +54,4 @@ Get-Content "backend.log" | Select-String "HikariPool", "Flyway", "Started Islan
 
 Write-Output ""
 Write-Output "[INFO] Verification complete. Application remains running with PID: $($proc.Id)"
+
