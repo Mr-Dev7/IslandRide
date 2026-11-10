@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.3.5</version>
+        <version>4.1.2</version>
         <relativePath/>
     </parent>
 
@@ -18,7 +18,7 @@
     <description>IslandRide — Multi-Vendor Tourism Vehicle Rental Marketplace Modular Monolith</description>
 
     <properties>
-        <java.version>22</java.version>
+        <java.version>25</java.version>
         <springdoc.version>2.6.0</springdoc.version>
         <archunit.version>1.3.0</archunit.version>
         <testcontainers.version>1.20.3</testcontainers.version>
