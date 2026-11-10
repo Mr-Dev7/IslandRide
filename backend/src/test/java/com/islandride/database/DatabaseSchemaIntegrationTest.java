@@ -153,7 +153,8 @@ class DatabaseSchemaIntegrationTest {
                         RoleType.ROLE_TOURIST.name(),
                         RoleType.ROLE_PARTNER_OWNER.name(),
                         RoleType.ROLE_SUPER_ADMIN.name(),
-                        RoleType.ROLE_FINANCE_ADMIN.name()
+                        RoleType.ROLE_FINANCE_ADMIN.name(),
+                        RoleType.ROLE_SUPPORT_AGENT.name()
                 );
 
         // 2. Verify Andaman Islands seeded by V3

@@ -12,6 +12,12 @@ public interface PartnerStaffRepository extends JpaRepository<PartnerStaff, Long
 
     Optional<PartnerStaff> findByUserId(Long userId);
 
+    Optional<PartnerStaff> findByUserIdAndActiveTrue(Long userId);
+
+    List<PartnerStaff> findAllByUserIdAndActiveTrue(Long userId);
+
+    Optional<PartnerStaff> findByBusinessIdAndUserId(Long businessId, Long userId);
+
     List<PartnerStaff> findByBusinessIdAndActiveTrue(Long businessId);
 }
 

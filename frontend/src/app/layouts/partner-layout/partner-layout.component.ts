@@ -1,10 +1,12 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { RouterOutlet, RouterLink } from '@angular/router';
+import { AuthService } from '../../core/services/auth.service';
 
 @Component({
   selector: 'app-partner-layout',
   standalone: true,
-  imports: [RouterOutlet, RouterLink],
+  imports: [CommonModule, RouterOutlet, RouterLink],
   template: `
     <div class="partner-layout-container">
       <aside class="partner-sidebar">
@@ -18,8 +20,13 @@ import { RouterOutlet, RouterLink } from '@angular/router';
       </aside>
       <div class="partner-main">
         <header class="partner-topbar">
-          <span class="hub-label">Hub: Havelock Jetty</span>
-          <span class="user-pill">Partner Manager</span>
+          <div class="topbar-left">
+            <span class="hub-label">Andaman Fleet Console</span>
+          </div>
+          <div class="topbar-right">
+            <span class="user-pill">{{ authService.currentUser()?.email }}</span>
+            <button (click)="logout()" class="btn-logout">Sign Out</button>
+          </div>
         </header>
         <main class="partner-content">
           <router-outlet></router-outlet>
@@ -36,9 +43,18 @@ import { RouterOutlet, RouterLink } from '@angular/router';
     .sidebar-nav a { color: #cbd5e1; padding: 0.5rem 0.75rem; border-radius: 6px; }
     .sidebar-nav a:hover { background: #334155; color: #fff; text-decoration: none; }
     .partner-main { flex: 1; display: flex; flex-direction: column; background: #f1f5f9; }
-    .partner-topbar { background: #fff; padding: 1rem 2rem; display: flex; justify-content: space-between; border-bottom: 1px solid var(--color-border); }
+    .partner-topbar { background: #fff; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--color-border); }
+    .topbar-right { display: flex; align-items: center; gap: 1rem; }
+    .user-pill { background: #f1f5f9; color: #334155; font-size: 0.8125rem; padding: 4px 10px; border-radius: 999px; }
+    .btn-logout { background: none; border: 1px solid #cbd5e1; padding: 4px 10px; border-radius: 4px; font-size: 0.8125rem; cursor: pointer; color: #475569; }
+    .btn-logout:hover { background: #f1f5f9; }
     .partner-content { padding: 2rem; flex: 1; }
   `]
 })
-export class PartnerLayoutComponent {}
+export class PartnerLayoutComponent {
+  readonly authService = inject(AuthService);
 
+  logout(): void {
+    this.authService.logout().subscribe();
+  }
+}

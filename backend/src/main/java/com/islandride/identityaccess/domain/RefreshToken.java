@@ -13,6 +13,9 @@ public class RefreshToken extends BaseEntity {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    @Column(name = "family_id", nullable = false, length = 36)
+    private String familyId;
+
     @Column(name = "token_hash", nullable = false, unique = true)
     private String tokenHash;
 
@@ -37,6 +40,14 @@ public class RefreshToken extends BaseEntity {
 
     public void setUser(User user) {
         this.user = user;
+    }
+
+    public String getFamilyId() {
+        return familyId;
+    }
+
+    public void setFamilyId(String familyId) {
+        this.familyId = familyId;
     }
 
     public String getTokenHash() {

@@ -77,6 +77,44 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
     }
 
+    @ExceptionHandler({
+        org.springframework.security.authentication.BadCredentialsException.class,
+        SecurityException.class
+    })
+    public ResponseEntity<ErrorResponse> handleAuthenticationException(Exception ex, HttpServletRequest request) {
+        String correlationId = MDC.get(CorrelationIdFilter.CORRELATION_ID_MDC_KEY);
+        log.warn("Authentication failure [correlationId={}]: {}", correlationId, ex.getMessage());
+
+        ErrorResponse error = ErrorResponse.of(
+                "https://errors.islandride.in/unauthorized",
+                "Authentication Failed",
+                HttpStatus.UNAUTHORIZED.value(),
+                ex.getMessage(),
+                request.getRequestURI(),
+                correlationId
+        );
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(error);
+    }
+
+    @ExceptionHandler({
+        org.springframework.security.authentication.LockedException.class,
+        org.springframework.security.authentication.DisabledException.class
+    })
+    public ResponseEntity<ErrorResponse> handleAccountStatusException(Exception ex, HttpServletRequest request) {
+        String correlationId = MDC.get(CorrelationIdFilter.CORRELATION_ID_MDC_KEY);
+        log.warn("Account status restriction [correlationId={}]: {}", correlationId, ex.getMessage());
+
+        ErrorResponse error = ErrorResponse.of(
+                "https://errors.islandride.in/account-restricted",
+                "Account Inactive or Locked",
+                HttpStatus.UNAUTHORIZED.value(),
+                ex.getMessage(),
+                request.getRequestURI(),
+                correlationId
+        );
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(error);
+    }
+
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ErrorResponse> handleAccessDenied(AccessDeniedException ex, HttpServletRequest request) {
         String correlationId = MDC.get(CorrelationIdFilter.CORRELATION_ID_MDC_KEY);
