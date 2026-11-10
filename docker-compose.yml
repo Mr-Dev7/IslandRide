@@ -66,3 +66,4 @@ networks:
   islandride-network:
     name: islandride-network
     driver: bridge
+

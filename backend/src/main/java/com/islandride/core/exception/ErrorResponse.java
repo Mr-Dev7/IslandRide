@@ -29,3 +29,4 @@ public record ErrorResponse(
         return new ErrorResponse(type, title, status, detail, instance, correlationId, invalidParams, Instant.now());
     }
 }
+

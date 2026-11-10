@@ -26,3 +26,4 @@ public class ModuleBoundaryArchitectureTest {
             classes().that().haveSimpleNameEndingWith("Config")
                     .should().resideInAPackage("..config..");
 }
+

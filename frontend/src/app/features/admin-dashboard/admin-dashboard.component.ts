@@ -12,3 +12,4 @@ import { Component } from '@angular/core';
   styles: [`.card { background: #fff; padding: 2rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); }`]
 })
 export class AdminDashboardComponent {}
+

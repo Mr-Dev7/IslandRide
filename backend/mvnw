@@ -20,3 +20,4 @@ if [ ! -f "$WRAPPER_JAR" ]; then
 fi
 
 exec "$JAVACMD" -Dmaven.multiModuleProjectDirectory="$DIR" -jar "$WRAPPER_JAR" "$@"
+

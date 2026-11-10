@@ -17,3 +17,4 @@ class IslandRideApplicationTests {
         assertTrue(true, "Application context initialized without failure");
     }
 }
+

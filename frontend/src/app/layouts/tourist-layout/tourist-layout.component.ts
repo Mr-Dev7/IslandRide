@@ -26,3 +26,4 @@ import { RouterOutlet, RouterLink } from '@angular/router';
   `]
 })
 export class TouristLayoutComponent {}
+

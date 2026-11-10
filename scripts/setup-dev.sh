@@ -26,3 +26,4 @@ else
 fi
 
 echo ">>> Local environment setup complete!"
+

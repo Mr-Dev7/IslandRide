@@ -17,3 +17,4 @@ public class BusinessRuleException extends RuntimeException {
         return errorType;
     }
 }
+

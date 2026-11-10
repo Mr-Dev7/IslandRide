@@ -33,3 +33,4 @@ powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.Security
 "%JAVACMD%" -Dmaven.multiModuleProjectDirectory="%DIR%." -jar "%WRAPPER_JAR%" %*
 if ERRORLEVEL 1 exit /b 1
 exit /b 0
+

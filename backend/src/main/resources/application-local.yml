@@ -48,3 +48,4 @@ logging:
     com.islandride: DEBUG
     org.springframework.security: INFO
     org.flywaydb: INFO
+

@@ -37,3 +37,4 @@ During the Phase 2 kickoff inspection of the host Windows environment, the follo
 | **Maven** | Not in system PATH | Required | We provide the standard Maven Wrapper (`mvnw` / `mvnw.cmd`) in the backend project to ensure zero-dependency local builds. |
 | **Docker / Compose** | Not detected in user PATH | Required for local container stack | Docker Desktop installation required to run local MySQL 8.4 & Redis containers. |
 | **Angular CLI** | Not installed globally | Expected | Use `npx @angular/cli` or local project dependencies. |
+

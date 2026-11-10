@@ -198,3 +198,4 @@ docker compose config
 2. **Decimal for Currency**: Always use `DECIMAL(10,2)` (Java `BigDecimal`) for monetary values. Never use `float` or `double`.
 3. **UTC Everywhere**: Database timestamps are stored strictly in UTC. Local island times (IST, UTC+05:30) are formatted for client display.
 4. **Tenant Isolation**: Every partner query must be scoped by `business_id` at the repository/service layer.
+

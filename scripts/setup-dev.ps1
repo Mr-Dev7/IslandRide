@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # IslandRide — Windows PowerShell Local Setup Script
 # ==============================================================================
 
@@ -23,3 +23,4 @@ if (Get-Command docker -ErrorAction SilentlyContinue) {
 }
 
 Write-Host ">>> Local environment setup complete!" -ForegroundColor Cyan
+

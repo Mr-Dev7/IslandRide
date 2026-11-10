@@ -16,3 +16,4 @@ public class IslandRideApplication {
         SpringApplication.run(IslandRideApplication.class, args);
     }
 }
+

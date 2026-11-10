@@ -22,3 +22,4 @@ describe('AppComponent', () => {
     expect(app.title).toEqual('IslandRide');
   });
 });
+

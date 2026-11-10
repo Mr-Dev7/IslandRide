@@ -32,3 +32,4 @@ class HealthApiControllerTest {
                 .andExpect(jsonPath("$.version").value("1.0.0-SNAPSHOT"));
     }
 }
+
