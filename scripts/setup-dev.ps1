@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # IslandRide — Windows PowerShell Local Setup Script
 # ==============================================================================
 
@@ -15,7 +15,7 @@ if (-not (Test-Path ".env")) {
 
 # 2. Check Docker
 if (Get-Command docker -ErrorAction SilentlyContinue) {
-    Write-Host "Starting MySQL 8.4 and Redis 7.4 via Docker Compose..." -ForegroundColor Yellow
+    Write-Host "Starting MySQL 8.4 (Port 3307) and Redis 7.4 (Port 6379) via Docker Compose..." -ForegroundColor Yellow
     docker compose up -d
     Write-Host "Docker services started." -ForegroundColor Green
 } else {

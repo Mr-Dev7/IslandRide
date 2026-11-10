@@ -116,7 +116,7 @@ docker compose up -d
 # Verify container health status
 docker compose ps
 ```
-- **MySQL 8.4 LTS**: Available on `127.0.0.1:3306` (Database: `islandride_db`).
+- **MySQL 8.4 LTS**: Available on `127.0.0.1:3307` (Database: `islandride_db`).
 - **Redis 7.4**: Available on `127.0.0.1:6379`.
 
 ### Step 3: Run Spring Boot Backend
@@ -176,10 +176,9 @@ docker compose config
 
 ## 6. Troubleshooting Common Issues
 
-1. **MySQL Container Connection Refused (`port 3306`)**:
-   - Verify Docker Desktop is running and no other local MySQL instance is occupying port 3306:
+1. **MySQL Container Connection / Port Conflict (`port 3307`)**:
+   - The MySQL container binds to host port `3307` to avoid conflicts with existing Windows services on port `3306`:
      ```powershell
-     Get-Process -Name "*sql*"
      docker compose ps
      ```
 2. **Flyway Migration Checksum Failure**:

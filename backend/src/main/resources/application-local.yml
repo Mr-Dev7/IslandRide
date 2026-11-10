@@ -5,7 +5,7 @@
 spring:
   # MySQL 8.4 LTS Local Database Connection
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:islandride_db}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3307}/${MYSQL_DATABASE:islandride_db}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8
     username: ${MYSQL_USER:islandride_user}
     password: ${MYSQL_PASSWORD:islandride_password}
     driver-class-name: com.mysql.cj.jdbc.Driver
