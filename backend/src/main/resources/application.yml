@@ -1,0 +1,57 @@
+# ==============================================================================
+# IslandRide — Base Spring Boot Application Configuration
+# ==============================================================================
+
+spring:
+  application:
+    name: islandride-backend
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+
+  # Jackson JSON Serialization
+  jackson:
+    time-zone: UTC
+    serialization:
+      write-dates-as-timestamps: false
+
+  # Servlet Configuration
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 25MB
+
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+
+# Actuator Telemetry & Probes
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+
+# OpenAPI Configuration
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+
+# Custom Platform Business Settings Defaults (Configurable Proposals)
+islandride:
+  booking:
+    hold-duration-seconds: ${HOLD_DURATION_SECONDS:600}
+    default-turnaround-buffer-minutes: ${TURNAROUND_BUFFER_MINUTES:60}
+    default-advance-percentage: ${ADVANCE_PERCENTAGE:25.0}
+    default-commission-rate: ${COMMISSION_RATE:4.0}
+    approval-deadline-hours-long: 6
+    approval-deadline-hours-medium: 2
+    approval-deadline-minutes-urgent: 45

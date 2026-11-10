@@ -1,0 +1,1 @@
+# IslandRide Static Public Assets

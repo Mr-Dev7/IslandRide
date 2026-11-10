@@ -1,0 +1,50 @@
+# ==============================================================================
+# IslandRide — Local Development Profile Configuration
+# ==============================================================================
+
+spring:
+  # MySQL 8.4 LTS Local Database Connection
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:islandride_db}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8
+    username: ${MYSQL_USER:islandride_user}
+    password: ${MYSQL_PASSWORD:islandride_password}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      pool-name: IslandRideHikariPool
+      maximum-pool-size: 15
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+
+  # JPA & Hibernate Settings
+  jpa:
+    database-platform: org.hibernate.dialect.MySQLDialect
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate # Strictly validates schema against Flyway migrations
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  # Flyway Database Migrations
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+
+  # Redis Configuration
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:redis_dev_password}
+      timeout: 2000ms
+
+logging:
+  level:
+    root: INFO
+    com.islandride: DEBUG
+    org.springframework.security: INFO
+    org.flywaydb: INFO

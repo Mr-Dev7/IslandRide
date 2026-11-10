@@ -1,0 +1,68 @@
+services:
+  # ============================================================================
+  # MySQL 8.4 LTS Database (Transactional Storage & Durable Inventory Holds)
+  # ============================================================================
+  mysql:
+    image: mysql:8.4
+    container_name: islandride-mysql
+    restart: unless-stopped
+    command: >
+      --default-authentication-plugin=caching_sha2_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --explicit_defaults_for_timestamp=true
+      --default-time-zone=+00:00
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_dev_password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-islandride_db}
+      MYSQL_USER: ${MYSQL_USER:-islandride_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-islandride_password}
+    ports:
+      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - islandride-network
+
+  # ============================================================================
+  # Redis 7.4 (In-Memory Key Expiry, Rate Limiting & Ephemeral Hold Coordination)
+  # ============================================================================
+  redis:
+    image: redis:7.4-alpine
+    container_name: islandride-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-redis_dev_password}
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy volatile-lru
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - islandride-network
+
+volumes:
+  mysql-data:
+    name: islandride-mysql-data
+  redis-data:
+    name: islandride-redis-data
+
+networks:
+  islandride-network:
+    name: islandride-network
+    driver: bridge

@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Complete architecture, implementation roadmap, database plan, security design and AI build prompts for an Andaman vehicle-rental marketplace.">
+<title>IslandRide — Complete Platform Architecture & Build Playbook</title>
+<style>
+:root{--bg:#f5f7fb;--panel:#fff;--ink:#182235;--muted:#5e6b80;--line:#dce3ee;--brand:#1457d9;--brand2:#0e3d9b;--soft:#eaf1ff;--green:#087b55;--orange:#9a5b00;--code:#101827;--shadow:0 8px 28px rgba(20,35,65,.07)}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.65 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
+a{color:var(--brand);text-decoration:none}a:hover{text-decoration:underline}
+header{background:linear-gradient(120deg,#0c2451,#1457d9 65%,#2785dc);color:#fff;padding:52px 24px 44px}
+.hero{max-width:1180px;margin:auto}.eyebrow{text-transform:uppercase;letter-spacing:.16em;font-size:12px;font-weight:800;opacity:.8}
+h1{font-size:clamp(30px,5vw,50px);line-height:1.12;margin:12px 0}.hero p{max-width:850px;font-size:17px;color:#e6efff}
+.pills{display:flex;gap:9px;flex-wrap:wrap;margin-top:22px}.pill{border:1px solid #ffffff55;border-radius:999px;padding:6px 12px;font-size:12px}
+.layout{max-width:1440px;margin:28px auto;padding:0 22px;display:grid;grid-template-columns:265px minmax(0,1fr);gap:24px}
+nav{position:sticky;top:18px;align-self:start;max-height:calc(100vh - 36px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:var(--shadow)}
+nav strong{display:block;margin-bottom:10px}nav a{display:block;padding:5px 8px;border-radius:7px;color:#46546b;font-size:13px}nav a:hover{background:var(--soft);text-decoration:none;color:var(--brand)}
+main{min-width:0}.intro,.section{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:26px;margin-bottom:20px;box-shadow:var(--shadow)}
+h2{font-size:25px;line-height:1.25;margin:0 0 16px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+h3{font-size:18px;margin:24px 0 8px}h4{font-size:15px;margin:16px 0 6px}
+p{margin:8px 0 12px}.muted,small{color:var(--muted)}ul,ol{padding-left:23px}li{margin:5px 0}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.card{border:1px solid var(--line);border-radius:11px;padding:15px;background:#fff}.card h3,.card h4{margin-top:0}
+.callout{padding:14px 16px;border-left:4px solid var(--brand);background:var(--soft);border-radius:7px;margin:14px 0}
+.warn{border-left-color:#d58a14;background:#fff7e8}.good{border-left-color:#0b9465;background:#eaf8f2}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px}th,td{border:1px solid var(--line);padding:9px 10px;text-align:left;vertical-align:top}th{background:#f0f4fa}
+code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;background:#edf1f7;padding:2px 5px;border-radius:4px;font-size:.92em}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--code);color:#e8efff;padding:17px;border-radius:10px;font:13px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;position:relative}
+pre code{background:none;color:inherit;padding:0}
+.copy{float:right;border:1px solid #b8c8e8;background:#fff;color:var(--brand);padding:6px 10px;border-radius:7px;cursor:pointer;font-weight:700;font-size:12px}
+.diagram{background:#f8faff;border:1px dashed #9fb6df;border-radius:10px;padding:16px;overflow:auto;font:13px/1.65 ui-monospace,Consolas,monospace;white-space:pre}
+.tag{display:inline-block;background:#edf3ff;color:#164bb2;border-radius:5px;padding:2px 7px;font-size:11px;font-weight:800}
+footer{text-align:center;color:var(--muted);padding:30px}
+@media(max-width:900px){.layout{grid-template-columns:1fr}nav{position:relative;top:0;max-height:none}.grid,.three{grid-template-columns:1fr}}
+@media print{body{background:#fff;font-size:11px}.layout{display:block;margin:0;padding:0}nav,.copy{display:none}.intro,.section{box-shadow:none;break-inside:avoid;border:0;padding:12px;margin:0 0 12px}header{padding:24px}a{color:inherit}pre{white-space:pre-wrap}}
+</style>
+</head>
+<body>
+<header><div class="hero">
+<div class="eyebrow">Product blueprint · Technical architecture · Delivery playbook</div>
+<h1>IslandRide<br>Tourism Vehicle Rental Marketplace</h1>
+<p>A complete build guide for a multi-vendor web platform where tourists discover and book bikes and cars, rental partners manage their fleets, and administrators operate the marketplace. Designed to launch in the Andaman and Nicobar Islands and expand to other destinations.</p>
+<div class="pills"><span class="pill">Angular + TypeScript</span><span class="pill">Java + Spring Boot</span><span class="pill">MySQL + Redis</span><span class="pill">Instant + approval bookings</span><span class="pill">Full + partial payments</span><span class="pill">Modular monolith</span></div>
+</div></header>
+<div class="layout">
+<nav><strong>On this page</strong>
+<a href="#executive">1. Executive summary</a><a href="#scope">2. Product scope & roles</a><a href="#journeys">3. User journeys</a><a href="#architecture">4. System architecture</a><a href="#stack">5. Technology stack</a><a href="#frontend">6. Angular frontend</a><a href="#backend">7. Spring Boot backend</a><a href="#database">8. Database design</a><a href="#booking">9. Availability & booking</a><a href="#payments">10. Payments & finance</a><a href="#security">11. Security</a><a href="#api">12. API design</a><a href="#portals">13. Portal features</a><a href="#business">14. Business model</a><a href="#infra">15. Hosting & deployment</a><a href="#testing">16. Testing & quality</a><a href="#ops">17. Monitoring & operations</a><a href="#andaman">18. Andaman-specific rules</a><a href="#roadmap">19. Implementation roadmap</a><a href="#mvp">20. MVP checklist</a><a href="#prompts">21. Complete AI build prompts</a><a href="#acceptance">22. Definition of done</a><a href="#recommendations">24. Additional recommendations</a><a href="#decisions">23. Decisions to confirm</a>
+</nav>
+<main>
+<section class="intro" id="executive"><h2>1. Executive summary</h2>
+<p><b>IslandRide is a multi-vendor marketplace, not a single rental-company website.</b> Multiple independent rental businesses can register, get verified, list their bikes and cars, set prices and availability, and receive bookings. Tourists can compare options and book online. The platform owns the discovery, booking, payment orchestration, trust, and administration experience.</p>
+<div class="grid three">
+<div class="card"><h3>Tourists</h3><p>Search by island, location, dates, vehicle type and price; book; pay; manage pickup, return and reviews.</p></div>
+<div class="card"><h3>Rental partners</h3><p>Register, submit documents, manage fleet/pricing/calendar, approve requests and track earnings.</p></div>
+<div class="card"><h3>Platform admins</h3><p>Verify partners, moderate listings, manage bookings, finance, commissions, disputes and reports.</p></div>
+</div>
+<div class="callout good"><b>Recommended starting architecture:</b> one Angular application and one Spring Boot modular monolith, backed by MySQL and Redis. Keep clear module boundaries so services can be separated later if scale justifies it. Do not start with microservices or Kubernetes for the MVP.</div>
+</section>
+
+<section class="section" id="scope"><h2>2. Product scope and roles</h2>
+<h3>Launch scope</h3><ul><li>Geography: Andaman and Nicobar Islands, with a data model that supports any destination.</li><li>Vehicle categories: bikes/scooters and cars.</li><li>Booking modes: instant confirmation and partner approval.</li><li>Payment modes: full online payment and partial advance with balance at pickup.</li><li>Responsive web experience for desktop and mobile browsers.</li></ul>
+<h3>Roles and permissions</h3>
+<table><tr><th>Role</th><th>Responsibilities</th></tr>
+<tr><td>TOURIST</td><td>Browse, book, pay, cancel within policy, view own bookings, review, raise support ticket.</td></tr>
+<tr><td>PARTNER_OWNER</td><td>Own business profile, verification, locations, fleet, pricing, staff and settlements.</td></tr>
+<tr><td>PARTNER_MANAGER / STAFF</td><td>Perform only the operations granted by the owner, such as listing management or handover.</td></tr>
+<tr><td>OPERATIONS_ADMIN</td><td>Partner verification, listing moderation, booking operations and disputes.</td></tr>
+<tr><td>FINANCE_ADMIN</td><td>Payments, refunds, commissions, reconciliation and settlements.</td></tr>
+<tr><td>SUPPORT_AGENT</td><td>Customer/partner support with limited access to sensitive records.</td></tr>
+<tr><td>SUPER_ADMIN</td><td>Platform configuration, role assignment and full administrative oversight.</td></tr></table>
+<h3>Future expansion (not MVP)</h3><p>Individual vehicle owners, driver-based rentals, boats, water sports, sightseeing activities, guides, travel packages, mobile apps, subscriptions and additional Indian destinations.</p>
+</section>
+
+<section class="section" id="journeys"><h2>3. Main user journeys</h2>
+<h3>Tourist journey</h3><ol><li>Open destination page and select island/location, pickup/return dates and times.</li><li>Filter bikes/cars by category, price, transmission, seating, rating and availability.</li><li>Open vehicle details: photos, specifications, partner, pickup instructions, deposit and policies.</li><li>Choose instant booking or request partner approval depending on listing rules.</li><li>Review backend-calculated price and pay full amount or required advance.</li><li>Receive confirmation and booking reference; view booking in dashboard.</li><li>Complete identity/licence checks and pickup handover; return vehicle; receive final receipt and review option.</li></ol>
+<h3>Partner journey</h3><ol><li>Create account and business profile.</li><li>Submit identity/business and vehicle documents for review.</li><li>Admin approves the partner and eligible listings.</li><li>Add vehicles, photos, specifications, island/location, pricing and booking mode.</li><li>Maintain calendar, maintenance blocks and unavailable periods.</li><li>Receive instant bookings or approve/reject requests.</li><li>Record pickup/return condition, odometer, fuel and damage evidence.</li><li>View earnings, commission, refunds and settlement status.</li></ol>
+<h3>Admin journey</h3><p>Review partner onboarding → moderate vehicles → oversee bookings → resolve exceptions → manage refunds/commission/settlements → monitor reports and audit logs.</p>
+</section>
+
+<section class="section" id="architecture"><h2>4. High-level system architecture</h2>
+<div class="diagram">                    TOURISTS / PARTNERS / ADMINS
+                               |
+                         HTTPS / TLS
+                               |
+                    NGINX / LOAD BALANCER
+                               |
+                    ANGULAR WEB APPLICATION
+              Public | Tourist | Partner | Admin layouts
+                               |
+                         REST / JSON
+                               |
+                    SPRING BOOT APPLICATION
+  +----------------------------------------------------------------+
+  | Identity | Partner | Geography | Inventory | Pricing           |
+  | Availability | Booking | Payment | Commission | Reviews        |
+  | Notifications | Support | Admin | Analytics                     |
+  +----------------------------------------------------------------+
+          |                    |                    |
+       MySQL 8.x             Redis          Object Storage
+  transactional data    cache/holds/rate    vehicle photos and
+                        limits/idempotency   private documents
+          |
+  External integrations: payment gateway, maps/geocoding,
+  email/SMS/WhatsApp, monitoring and error reporting</div>
+<p><b>Architecture style:</b> modular monolith with package-by-feature, explicit interfaces between modules, and clear ownership of data. Keep business rules in the backend. Angular is a client, never the authority for price, availability, payment status or access control.</p>
+<h3>Why this architecture?</h3><ul><li>Faster and simpler to build, test, deploy and operate with a small team.</li><li>One transactional boundary helps protect booking and payment consistency.</li><li>Modules can be extracted later without prematurely adding distributed-system complexity.</li><li>Redis and object storage handle workloads that should not live in relational tables.</li></ul>
+</section>
+
+<section class="section" id="stack"><h2>5. Recommended technology stack</h2>
+<table><tr><th>Layer</th><th>Technology</th><th>Purpose</th></tr>
+<tr><td>Frontend</td><td>Angular + TypeScript</td><td>Responsive public, tourist, partner and admin experiences.</td></tr>
+<tr><td>Backend</td><td>Java LTS + Spring Boot</td><td>REST APIs, business rules, workflows and integrations.</td></tr>
+<tr><td>Database</td><td>MySQL 8.x</td><td>Users, listings, bookings, payment records and financial ledger data.</td></tr>
+<tr><td>ORM</td><td>Spring Data JPA / Hibernate</td><td>Persistence; use explicit queries for critical operations.</td></tr>
+<tr><td>Security</td><td>Spring Security</td><td>Authentication, authorization, sessions and endpoint protection.</td></tr>
+<tr><td>Cache</td><td>Redis</td><td>Short-lived holds, caching, throttling and ephemeral coordination.</td></tr>
+<tr><td>Migrations</td><td>Flyway</td><td>Version-controlled database schema changes.</td></tr>
+<tr><td>API contract</td><td>REST + OpenAPI/Swagger</td><td>Documented and testable frontend/backend contract.</td></tr>
+<tr><td>Payments</td><td>Razorpay or suitable gateway</td><td>Payment orders, checkout, webhooks and refunds.</td></tr>
+<tr><td>Media</td><td>Private S3-compatible object storage</td><td>Vehicle images and sensitive partner/vehicle documents.</td></tr>
+<tr><td>Maps</td><td>Google Maps or Mapbox</td><td>Location selection, maps and geocoding.</td></tr>
+<tr><td>DevOps</td><td>Docker, Nginx, GitHub Actions</td><td>Repeatable environments and CI/CD.</td></tr>
+<tr><td>Testing</td><td>JUnit 5, Mockito, Testcontainers, Playwright, k6</td><td>Unit, integration, browser and load testing.</td></tr>
+<tr><td>Observability</td><td>OpenTelemetry, Prometheus, Grafana</td><td>Logs, metrics, traces and alerts.</td></tr></table>
+</section>
+
+<section class="section" id="frontend"><h2>6. Angular frontend architecture</h2>
+<p>Use one Angular application with role-aware layouts and lazy-loaded features. Keep shared UI components separate from domain-specific features.</p>
+<div class="diagram">frontend/src/app/
+  core/          authentication, guards, interceptors, config
+  shared/        reusable components, pipes, directives
+  layouts/
+    public-layout/
+    tourist-layout/
+    partner-layout/
+    admin-layout/
+  features/
+    home/
+    search/
+    vehicle-details/
+    authentication/
+    tourist-dashboard/
+    partner-onboarding/
+    partner-dashboard/
+    fleet-management/
+    booking-management/
+    admin-dashboard/
+    finance/
+    support/
+  app.routes.ts</div>
+<h3>Frontend rules</h3><ul><li>Use Reactive Forms and shared validators for complex forms.</li><li>Use Angular Signals and/or RxJS consistently for state and async data.</li><li>Use route guards for navigation experience, but enforce all permissions again on the backend.</li><li>Use HTTP interceptors for correlation IDs and safe auth handling.</li><li>Lazy-load major feature routes; use responsive accessible components.</li><li>Never calculate authoritative prices or mark a booking paid in the browser.</li><li>Use environment configuration for public API URLs; never put secrets in Angular bundles.</li></ul>
+</section>
+
+<section class="section" id="backend"><h2>7. Spring Boot backend modules</h2>
+<table><tr><th>Module</th><th>Owns</th></tr>
+<tr><td>identity-access</td><td>Login, registration, tokens/sessions, roles, permissions and account recovery.</td></tr>
+<tr><td>user-management</td><td>Tourist profiles, contact verification and preferences.</td></tr>
+<tr><td>partner</td><td>Business profile, locations, documents, staff and verification status.</td></tr>
+<tr><td>geography</td><td>Country, state/UT, island, locality and pickup locations.</td></tr>
+<tr><td>inventory</td><td>Vehicle categories, vehicle profiles, images and documents.</td></tr>
+<tr><td>pricing</td><td>Daily/hourly/seasonal rates, discounts, taxes, fees and deposits.</td></tr>
+<tr><td>availability</td><td>Calendar, holds, maintenance and conflict detection.</td></tr>
+<tr><td>booking</td><td>Booking lifecycle, approval, cancellation, pickup and return.</td></tr>
+<tr><td>payment-finance</td><td>Payment orders, attempts, refunds, reconciliation and settlements.</td></tr>
+<tr><td>commission</td><td>Platform commission, partner payable and settlement calculations.</td></tr>
+<tr><td>reviews</td><td>Verified booking reviews, moderation and reports.</td></tr>
+<tr><td>notifications</td><td>Email/SMS/WhatsApp templates, delivery and retry logs.</td></tr>
+<tr><td>support-disputes</td><td>Tickets, messages, damage reports and dispute workflows.</td></tr>
+<tr><td>administration</td><td>Admin actions, configuration and audit review.</td></tr>
+<tr><td>analytics</td><td>Operational and business reporting.</td></tr></table>
+<h3>Package pattern for each module</h3>
+<pre><code>com.islandride.booking
+  api/             controllers, request/response DTOs
+  application/     use cases, services, commands
+  domain/          entities, value objects, rules, events
+  infrastructure/  repositories, gateway adapters, persistence</code></pre>
+<div class="callout"><b>Module boundary rule:</b> one module must not directly modify another module's tables through its repositories. Expose an application interface or publish a domain event. Consider Spring Modulith and ArchUnit to verify boundaries.</div>
+<h3>Engineering principles</h3><ul><li>SOLID: single responsibility, open/closed, substitutability, interface segregation, dependency inversion.</li><li>DRY, KISS and YAGNI; avoid unnecessary abstraction and premature microservices.</li><li>Use dependency injection, composition, immutable value objects and explicit transaction boundaries.</li><li>Use patterns only when useful: Strategy (pricing/payment), Adapter (gateway), State (booking), Repository, Specification (search), Observer/events and Factory.</li></ul>
+</section>
+
+<section class="section" id="database"><h2>8. Database design — logical model</h2>
+<p>Use MySQL as the source of truth for transactional records. Finalize normalization, foreign keys, indexes, retention and data ownership during detailed database design.</p>
+<table><tr><th>Area</th><th>Suggested tables</th></tr>
+<tr><td>Identity</td><td>users, roles, permissions, user_roles, refresh_tokens</td></tr>
+<tr><td>Profiles</td><td>tourist_profiles, partner_profiles, admin_profiles</td></tr>
+<tr><td>Partner</td><td>businesses, business_documents, business_locations, partner_status_history</td></tr>
+<tr><td>Geography</td><td>countries, states, islands, locations</td></tr>
+<tr><td>Fleet</td><td>vehicle_categories, vehicles, vehicle_images, vehicle_documents</td></tr>
+<tr><td>Pricing / availability</td><td>pricing_rules, seasonal_prices, partner_policies, vehicle_unavailability, maintenance_records, inventory_holds</td></tr>
+<tr><td>Booking</td><td>bookings, booking_items, booking_status_history</td></tr>
+<tr><td>Finance</td><td>payments, payment_attempts, refunds, commissions, settlements</td></tr>
+<tr><td>Trust / support</td><td>reviews, review_reports, support_tickets, ticket_messages, damage_reports</td></tr>
+<tr><td>Platform</td><td>notifications, notification_templates, notification_logs, audit_logs, system_settings, configuration_history</td></tr></table>
+<h3>Data design rules</h3><ul><li>Use UUIDs or non-guessable public IDs where appropriate; an ID is not an authorization check.</li><li>Store money as <code>DECIMAL</code>, never floating-point types.</li><li>Store timestamps in UTC; convert to local island time for display and operations.</li><li>Store media in object storage and only metadata/object keys in MySQL.</li><li>Use created_at, updated_at, created_by, updated_by and optimistic version fields where appropriate.</li><li>Use foreign keys, unique constraints, indexes and Flyway migrations.</li><li>Never store card numbers or CVV. Keep gateway references and transaction metadata only.</li></ul>
+</section>
+
+<section class="section" id="booking"><h2>9. Availability and booking design</h2>
+<h3>Availability is derived, not a simple boolean</h3><p>Do not rely on a manually maintained <code>is_available</code> flag. Availability is calculated from vehicle operating status, confirmed bookings, temporary holds, maintenance blocks, buffers, partner policies, pickup/return rules and location constraints.</p>
+<h3>Booking lifecycle (illustrative)</h3>
+<div class="diagram">DRAFT
+  ├─ partner approval required → PENDING_PARTNER_APPROVAL
+  │       ├─ approve → APPROVED → PENDING_PAYMENT
+  │       └─ reject → REJECTED
+  └─ instant booking → PENDING_PAYMENT
+             |
+        payment verified
+             |
+         CONFIRMED
+             |
+       PICKUP_PENDING
+             |
+           ACTIVE
+             |
+       RETURN_PENDING
+             |
+         COMPLETED
+
+Other paths: PAYMENT_FAILED | CANCELLED | EXPIRED | DISPUTED</div>
+<p>Enforce valid transitions in backend services. Keep booking status history and record actor, timestamp and reason for each transition.</p>
+<h3>Safe booking algorithm</h3><ol><li>Receive requested vehicle and pickup/return times.</li><li>Validate dates, location, partner policy and vehicle operating status.</li><li>Check overlap against confirmed bookings, unexpired holds and maintenance blocks.</li><li>Calculate price on the server and create a short-lived inventory hold.</li><li>For approval bookings, send the request to the partner and apply a separate approval deadline.</li><li>On approval/instant path, create payment order and wait for verified payment result.</li><li>Re-check hold validity and booking constraints before confirmation.</li><li>Release holds on rejection, cancellation, expiry or failed payment according to policy.</li></ol>
+<div class="callout warn"><b>Double-booking prevention is critical.</b> Use database transactions and appropriate row/slot locking or another rigorously tested concurrency strategy, re-check availability before confirmation, and use idempotency keys. A normal unique constraint cannot prevent arbitrary overlapping time intervals. Example: a booking from 10 Nov 09:00 to 12 Nov 09:00 conflicts with a new booking from 11 Nov 10:00 to 12 Nov 10:00.</div>
+<p>Illustrative payment hold: 10 minutes, configurable. Partner approval expiry is a separate setting. If payment arrives after the hold expires, revalidate inventory and either safely confirm or start a controlled refund/exception process.</p>
+<h3>Separate vehicle status from availability</h3><p>Operating status may be ACTIVE, UNDER_MAINTENANCE, INACTIVE, SUSPENDED or RETIRED. Availability is calculated for a requested time range and should not be stored as a permanent vehicle property.</p>
+</section>
+
+<section class="section" id="payments"><h2>10. Payments, commissions and finance</h2>
+<h3>Payment flow</h3><ol><li>Backend calculates the payable amount and creates a gateway order.</li><li>Frontend opens the payment gateway checkout.</li><li>Gateway sends a signed webhook to the backend.</li><li>Backend verifies webhook signature and, where required, fetches payment status from the gateway.</li><li>Backend records the payment result idempotently and confirms the booking only after authoritative verification.</li><li>Send receipt/notification and update finance records.</li></ol>
+<div class="callout warn">A browser redirect or “payment successful” screen is not proof of payment. The backend must verify the gateway result. Protect webhook endpoints against forged requests and replay.</div>
+<h3>Supported payment options</h3><ul><li><b>Full payment:</b> customer pays the entire amount online.</li><li><b>Partial payment:</b> customer pays a configured advance online and pays the remaining balance at pickup. Record offline collection with amount, method, collector, timestamp and receipt/reference.</li></ul>
+<h3>Finance records</h3><p>Track payment orders, attempts, gateway transaction IDs, refunds, commission, partner payable, settlements, reconciliation, deposits and adjustments as separate concepts. Security deposits are liabilities/held amounts, not platform revenue.</p>
+<h3>Illustrative price breakdown</h3>
+<table><tr><th>Line item</th><th>Example</th></tr><tr><td>Rental: 2 days × ₹500</td><td>₹1,000</td></tr><tr><td>Delivery fee</td><td>₹100</td></tr><tr><td>Applicable tax</td><td>Calculated by configured rules</td></tr><tr><td>Security deposit</td><td>₹500 (tracked separately)</td></tr><tr><td>Customer payable</td><td>Backend-calculated total</td></tr></table>
+<p>Use a provider-independent payment interface so a gateway can be replaced without rewriting booking logic. Keep gateway credentials in a secret manager/environment, never in source control.</p>
+</section>
+
+<section class="section" id="security"><h2>11. Security architecture</h2>
+<p>No system can honestly promise zero vulnerabilities. The goal is to reduce attack surface, enforce least privilege, test security continuously and respond quickly to new issues.</p>
+<h3>Identity and access</h3><ul><li>Spring Security with short-lived access credentials and rotating refresh tokens.</li><li>Prefer secure HttpOnly, SameSite cookies for browser refresh/session credentials, with CSRF protection where applicable. Avoid long-lived tokens in localStorage.</li><li>Hash passwords with Argon2id or properly configured BCrypt; never store plaintext passwords.</li><li>Use expiring single-use password-reset tokens, verified email/phone flows and throttling.</li><li>Consider MFA for administrators and sensitive partner actions.</li><li>RBAC plus resource-level authorization; default deny.</li></ul>
+<h3>Critical application protections</h3><ul><li>SQL injection: parameterized queries and safe ORM usage.</li><li>XSS: Angular escaping, safe rendering, Content Security Policy; avoid unsafe HTML.</li><li>CSRF: secure cookie design and CSRF tokens for state-changing requests.</li><li>IDOR/BOLA: verify ownership/partner scope on every resource access, not just the route.</li><li>Brute force and abuse: login/API rate limits, lockout/risk controls and bot protection where needed.</li><li>Payment: signed webhook verification, idempotency, replay protection and server-side status verification.</li><li>Uploads: size/type allowlists, content inspection, malware scanning, private storage and signed access links.</li><li>SSRF: restrict outbound destinations and validate URLs if remote fetch is supported.</li><li>Audit logs for sensitive admin, partner and financial operations; do not log secrets or sensitive documents.</li></ul>
+<h3>Infrastructure protections</h3><ul><li>HTTPS everywhere; database and Redis not publicly exposed.</li><li>Secrets manager, least-privilege service accounts and regular key rotation.</li><li>Encrypted backups, restore drills, dependency/container scanning and patching.</li><li>WAF/DDoS protection as appropriate; network segmentation and firewall rules.</li><li>Define retention/deletion rules for identity, licence and business documents.</li></ul>
+<div class="callout warn">Before launch, validate applicable Indian privacy/data-protection, consumer, vehicle rental, insurance, permit, tax and payment obligations with qualified local professionals. Do not assume platform software alone makes a partner or vehicle legally compliant.</div>
+</section>
+
+<section class="section" id="api"><h2>12. API design standards</h2>
+<p>Use versioned REST endpoints under <code>/api/v1</code>. Use DTOs rather than returning JPA entities. Validate every input and authorize every operation server-side.</p>
+<table><tr><th>Area</th><th>Example endpoint</th></tr>
+<tr><td>Authentication</td><td>POST /api/v1/auth/register, /login, /refresh, /logout</td></tr>
+<tr><td>Users</td><td>GET/PATCH /api/v1/users/me</td></tr>
+<tr><td>Partners</td><td>POST /api/v1/partners, POST /api/v1/partners/documents</td></tr>
+<tr><td>Geography</td><td>GET /api/v1/locations/islands, GET /api/v1/locations/search</td></tr>
+<tr><td>Vehicles</td><td>GET /api/v1/vehicles, GET /api/v1/vehicles/{id}</td></tr>
+<tr><td>Availability</td><td>GET /api/v1/vehicles/{id}/availability</td></tr>
+<tr><td>Bookings</td><td>POST /api/v1/bookings, GET /api/v1/bookings/{id}</td></tr>
+<tr><td>Partner approval</td><td>POST /api/v1/partner/bookings/{id}/approve or /reject</td></tr>
+<tr><td>Payments</td><td>POST /api/v1/payments/orders, POST /api/v1/payments/webhooks/{provider}</td></tr>
+<tr><td>Finance</td><td>GET /api/v1/partner/settlements, POST /api/v1/admin/refunds</td></tr>
+<tr><td>Admin</td><td>GET /api/v1/admin/partners/pending, PATCH /api/v1/admin/partners/{id}/status</td></tr>
+<tr><td>Support</td><td>POST /api/v1/support/tickets, GET /api/v1/support/tickets/{id}</td></tr></table>
+<p>Use consistent HTTP status codes, pagination, sorting, filtering, correlation IDs and a standard error shape. Document request/response schemas and authentication requirements in OpenAPI.</p>
+</section>
+
+<section class="section" id="portals"><h2>13. Portal feature requirements</h2>
+<div class="grid">
+<div class="card"><h3>Public / tourist portal</h3><ul><li>Destination landing pages and search.</li><li>Island/location, date, category and price filters.</li><li>Vehicle details, gallery, specifications and partner profile.</li><li>Availability calendar and clear price breakdown.</li><li>Instant/request booking and payment checkout.</li><li>Booking history, cancellation, support and reviews.</li><li>Responsive mobile-first design and accessible forms.</li></ul></div>
+<div class="card"><h3>Partner portal</h3><ul><li>Business registration and verification status.</li><li>Fleet CRUD, vehicle photos and document upload.</li><li>Pricing rules, seasonal rates and deposits.</li><li>Availability calendar and maintenance blocks.</li><li>Booking approvals, pickup and return checklist.</li><li>Dashboard: fleet, pending requests, pickups/returns, revenue.</li><li>Commission, settlement and payout history.</li></ul></div>
+<div class="card"><h3>Admin portal</h3><ul><li>Partner and document verification queue.</li><li>User, partner, location and vehicle management.</li><li>Booking search and exception management.</li><li>Payment, refund, commission and settlement controls.</li><li>Reviews, disputes and support tickets.</li><li>Reports, system settings and audit logs.</li></ul></div>
+<div class="card"><h3>Shared UX requirements</h3><ul><li>Clear loading, empty, success and error states.</li><li>Accessible labels, keyboard navigation and contrast.</li><li>Consistent design system and reusable components.</li><li>Server-side pagination/filtering for large datasets.</li><li>Confirmation for destructive and financial actions.</li><li>Never expose another user's or partner's private records.</li></ul></div>
+</div>
+</section>
+
+<section class="section" id="business"><h2>14. Business model and pricing</h2>
+<h3>Suggested initial model</h3><ul><li>Free partner registration and basic listing to reduce onboarding friction.</li><li>Start with an experimentally validated commission, for example 3–5%; 4% is an illustrative starting hypothesis, not a fixed recommendation.</li><li>Tourist browsing is free; avoid adding a booking fee at MVP launch unless user research supports it.</li><li>Later options: featured listings, optional partner subscriptions, sponsored destination placements and commissions on additional services.</li></ul>
+<h3>Illustrative marketplace calculation</h3>
+<table><tr><th>Assumption</th><th>Value</th></tr><tr><td>Partners</td><td>30</td></tr><tr><td>Vehicles per partner</td><td>5</td></tr><tr><td>Bookings per vehicle per month</td><td>3</td></tr><tr><td>Average booking value</td><td>₹1,000</td></tr><tr><td>Monthly bookings / gross booking value</td><td>450 / ₹4,50,000</td></tr><tr><td>Commission at 4%</td><td>₹18,000 gross commission</td></tr></table>
+<p class="muted">This is an illustrative scenario, not a forecast or profit calculation. It excludes gateway fees, taxes, refunds, support, marketing, insurance and operating costs.</p>
+<h3>Pricing engine</h3><p>Calculate all prices on the backend. Support hourly/daily rates, duration, seasonal pricing, discounts, delivery/pickup charges, taxes, deposits, cancellation fees and partner-specific rules. Store a price snapshot on each booking so later rate changes do not rewrite history.</p>
+</section>
+
+<section class="section" id="infra"><h2>15. Hosting, environments and deployment</h2>
+<div class="diagram">Internet
+   |
+DNS + HTTPS certificate
+   |
+Nginx / reverse proxy
+   |------------------------------|
+Angular static build          Spring Boot API
+                                  |
+                   |--------------|--------------|
+                 MySQL           Redis       Object storage
+              managed DB      managed/cache   private bucket</div>
+<h3>Hosting principles</h3><ul><li>Deploy Angular static assets to a CDN/static host or serve behind Nginx.</li><li>Run Spring Boot on a managed application host, VM or container platform.</li><li>Use managed MySQL/Redis where budget allows; otherwise operate carefully with backups and monitoring.</li><li>Use private object storage for photos/documents, with signed URLs and access checks.</li><li>Do not expose MySQL or Redis directly to the public internet.</li><li>Use Docker Compose for local development and a straightforward production deployment initially. Kubernetes is not required for launch.</li></ul>
+<h3>Environments</h3><p>Local → Development → Test/CI → Staging → Production. Keep separate databases, credentials, gateway keys and storage buckets. Test production-like migrations and backups in staging.</p>
+<h3>Suggested monorepo</h3>
+<pre><code>islandride/
+  frontend/
+  backend/
+  infrastructure/
+    docker/
+    nginx/
+  docs/
+    requirements/
+    architecture/
+    database/
+    api/
+    security/
+    deployment/
+  scripts/
+  .github/workflows/
+  docker-compose.yml
+  .gitignore
+  README.md</code></pre>
+<p>Use Git branches such as <code>main</code> and short-lived <code>feature/*</code>/<code>bugfix/*</code>. Require pull requests and CI checks. Never commit passwords, API keys, local database dumps, generated build output or private customer documents.</p>
+</section>
+
+<section class="section" id="testing"><h2>16. Testing and quality strategy</h2>
+<table><tr><th>Test level</th><th>Tools / focus</th></tr>
+<tr><td>Unit</td><td>JUnit 5, Mockito; domain rules, pricing, booking state transitions.</td></tr>
+<tr><td>Integration</td><td>Spring Boot Test, Testcontainers; MySQL, Redis and gateway adapters.</td></tr>
+<tr><td>Architecture</td><td>ArchUnit / Spring Modulith; enforce module boundaries.</td></tr>
+<tr><td>API</td><td>REST Assured or equivalent; validation, authorization and error contracts.</td></tr>
+<tr><td>Frontend</td><td>Angular unit/component tests; form validation and role-specific UI.</td></tr>
+<tr><td>End-to-end</td><td>Playwright; tourist, partner and admin journeys.</td></tr>
+<tr><td>Performance</td><td>k6; search, availability, booking and payment callback load.</td></tr>
+<tr><td>Security</td><td>OWASP ZAP, dependency and container scans such as Trivy.</td></tr></table>
+<h3>Must-test scenarios</h3><ul><li>Two customers attempt to book the same vehicle/time concurrently.</li><li>Customer closes browser after successful gateway payment.</li><li>Duplicate webhook arrives; payment and booking are not duplicated.</li><li>Payment fails or arrives after the hold expires.</li><li>Partner rejects an approval request.</li><li>Maintenance block overlaps a requested rental.</li><li>Customer A attempts to view Customer B's booking.</li><li>Partner A attempts to access Partner B's vehicle or settlement.</li><li>Cancellation/refund follows the correct policy and ledger.</li><li>Offline balance at pickup is recorded with a traceable receipt.</li></ul>
+<h3>CI pipeline</h3><p>On each pull request: format/lint → compile/build → unit tests → integration tests → Angular build/tests → dependency/security scan → Docker build. Deploy to staging after merge; production deployment requires approval and a rollback plan.</p>
+</section>
+
+<section class="section" id="ops"><h2>17. Monitoring, reliability and operations</h2>
+<ul><li>Capture structured logs with request/correlation IDs; never log passwords, tokens, payment secrets or sensitive document contents.</li><li>Monitor API latency, error rates, database connections, Redis health, booking conversion, vehicle utilization, cancellations, payment success and notification failures.</li><li>Use OpenTelemetry, Prometheus and Grafana, with alerts for actionable incidents.</li><li>Health/readiness checks, graceful shutdown, retry with backoff and dead-letter handling for asynchronous failures.</li><li>Use idempotency for payment, booking and webhook operations.</li><li>Consider a transactional outbox when database changes must reliably publish events/notifications.</li><li>Automate backups and periodically prove that restoration works. Define recovery time and recovery point objectives.</li><li>Maintain runbooks for payment outage, database failure, accidental double booking and data exposure.</li></ul>
+</section>
+
+<section class="section" id="andaman"><h2>18. Andaman-specific product rules</h2>
+<ul><li>Model island and pickup/return location as first-class data, not free-text labels.</li><li>Example initial destinations: Sri Vijaya Puram (Port Blair), Swaraj Dweep (Havelock) and Shaheed Dweep (Neil Island). Keep these configurable in the database.</li><li>Do not assume a vehicle can move between islands. Partner policy must define operating island, pickup/return points, permitted transfer, extra charges and return restrictions.</li><li>Capture driving licence and vehicle documents only when needed, protect them as sensitive data and define retention.</li><li>Support pickup/return handover evidence: photos, odometer, fuel level, existing damage and customer/partner acknowledgement.</li><li>Validate applicable local permits, insurance, vehicle rules and rental requirements with local authorities or a qualified advisor.</li><li>Plan for seasonal demand, ferry/logistics constraints and island-specific operating hours.</li><li>Build trust through verified partners, verified-booking reviews, transparent deposits, cancellation rules and support contacts.</li></ul>
+</section>
+
+<section class="section" id="roadmap"><h2>19. Implementation roadmap</h2>
+<table><tr><th>Phase</th><th>Work</th><th>Planning estimate</th><th>Exit milestone</th></tr>
+<tr><td>1. Discovery & design</td><td>Requirements, roles, workflows, policies, wireframes, architecture and SRS.</td><td>1–2 weeks</td><td>Approved scope and product decisions.</td></tr>
+<tr><td>2. Foundation</td><td>Git repo, Angular/Spring setup, Docker, CI, environments, DB migrations and API conventions.</td><td>1–2 weeks</td><td>Build/deploy skeleton works.</td></tr>
+<tr><td>3. Identity & partners</td><td>Registration, login, roles, profiles, partner onboarding and admin verification.</td><td>2–3 weeks</td><td>Verified partner can access portal.</td></tr>
+<tr><td>4. Geography & inventory</td><td>Islands, locations, vehicle CRUD, media, pricing and calendar.</td><td>2–3 weeks</td><td>Approved listings searchable.</td></tr>
+<tr><td>5. Discovery & booking</td><td>Search, filters, availability, holds, instant and approval workflows.</td><td>3–4 weeks</td><td>Booking lifecycle passes concurrency tests.</td></tr>
+<tr><td>6. Payments & finance</td><td>Gateway, webhooks, partial/full payment, refunds, commission and settlement records.</td><td>2–3 weeks</td><td>Verified end-to-end payment.</td></tr>
+<tr><td>7. Admin & quality</td><td>Admin tools, support, audit, reports, security and end-to-end testing.</td><td>2–3 weeks</td><td>Release candidate accepted.</td></tr>
+<tr><td>8. Production launch</td><td>Staging/UAT, legal checks, backups, monitoring, domain, production rollout and pilot.</td><td>2–3 weeks</td><td>Controlled pilot launch.</td></tr></table>
+<p><b>Overall estimate:</b> approximately 15–23 weeks for a focused team of 2–4 developers, subject to scope, integrations, partner onboarding and testing. It is a planning estimate, not a guarantee.</p>
+</section>
+
+<section class="section" id="mvp"><h2>20. MVP release checklist</h2>
+<div class="grid">
+<div class="card"><h3>Tourist MVP</h3><ul><li>Register/login and profile</li><li>Browse bikes/cars by island/location</li><li>Vehicle detail and availability</li><li>Instant and partner-approval booking</li><li>Full and partial online payment</li><li>Booking history and cancellation</li></ul></div>
+<div class="card"><h3>Partner MVP</h3><ul><li>Onboarding and document verification</li><li>Vehicle and photo management</li><li>Pricing and calendar</li><li>Approve/reject booking requests</li><li>Pickup/return records</li><li>Earnings and settlement view</li></ul></div>
+<div class="card"><h3>Admin MVP</h3><ul><li>Partner/user/listing approvals</li><li>Booking search and exception handling</li><li>Payment/refund visibility</li><li>Commission configuration</li><li>Basic analytics and audit trail</li></ul></div>
+<div class="card"><h3>Technical MVP</h3><ul><li>Angular + Spring Boot + MySQL</li><li>Redis for temporary coordination as designed</li><li>Security and ownership checks</li><li>Payment webhook verification</li><li>Docker, CI/CD, logs and monitoring</li><li>Backups, restore test and critical test suite</li></ul></div>
+</div>
+</section>
+
+<section class="section" id="prompts"><h2>21. Complete AI build prompts and step-by-step execution</h2>
+<p>Use these prompts with your coding assistant one phase at a time. Do not ask it to generate the entire marketplace in one giant response. Give it the project repository context, ask for a plan before edits, review each change, run tests and commit working milestones.</p>
+<div class="callout good"><b>Important instruction for every phase:</b> Ask the AI to inspect the existing repository first, list files it intends to create/change, explain design decisions, implement only the current phase, run relevant tests/builds, report exact commands and results, and stop before moving to the next phase. Never allow it to invent successful test results.</div>
+<h3>Master project prompt — paste first</h3>
+<button class="copy" onclick="copyBlock('master')">Copy prompt</button>
+<pre id="master"><code>You are a senior product architect and full-stack engineering lead. Help me build a production-minded multi-vendor tourism vehicle-rental marketplace called IslandRide.
+
+PRODUCT:
+The platform initially serves the Andaman and Nicobar Islands. Independent rental partners list bikes/scooters and cars. Tourists search by island/location, dates, vehicle category and price, then book. There are three portals: public/tourist, partner, and platform admin.
+
+FIXED PRODUCT DECISIONS:
+- Frontend: Angular + TypeScript.
+- Backend: Java LTS + Spring Boot REST API.
+- Database: MySQL 8.x; Spring Data JPA/Hibernate.
+- Cache/temporary coordination: Redis where justified.
+- Migrations: Flyway.
+- API documentation: OpenAPI/Swagger.
+- Deployment: Docker; Nginx/reverse proxy; CI/CD.
+- Architecture: modular monolith, package-by-feature, clear module boundaries. Do not introduce microservices or Kubernetes for MVP without a written, evidence-based reason.
+- Booking supports both instant confirmation and partner approval.
+- Payments support full online payment and partial online advance with balance collected at pickup.
+- Initial inventory: bikes and cars. Future expansion must remain possible without building future modules now.
+- Initial geography: islands/locations in Andaman; geography must be database-driven and expandable.
+
+USER ROLES:
+TOURIST, PARTNER_OWNER, PARTNER_MANAGER, PARTNER_STAFF, OPERATIONS_ADMIN, FINANCE_ADMIN, SUPPORT_AGENT, SUPER_ADMIN. Enforce authorization on the backend, including ownership and partner scope.
+
+CORE DOMAINS:
+Identity/access, users, partners, geography, inventory, pricing, availability, booking, payments/finance, commissions, settlements, reviews, notifications, support/disputes, administration, analytics.
+
+NON-NEGOTIABLE ENGINEERING RULES:
+1. First inspect the repository and report what exists. Do not overwrite existing work blindly.
+2. Produce a short implementation plan before editing files.
+3. Build in small phases with clean, readable, maintainable code.
+4. Apply SOLID, DRY, KISS, YAGNI and separation of concerns. Avoid needless abstractions.
+5. Keep controllers thin; put business rules in application/domain services.
+6. Use request/response DTOs, validation and centralized error handling. Never expose JPA entities directly.
+7. Use Flyway migrations; never rely on automatic production schema creation.
+8. Store money using DECIMAL; timestamps in UTC; media in object storage, not database blobs.
+9. Never store card numbers or CVV. Verify payment webhooks server-side.
+10. Protect against double booking with transactions, locking/concurrency controls, temporary holds, revalidation and idempotency. A simple unique constraint is not sufficient for arbitrary overlapping time ranges.
+11. Availability must account for confirmed bookings, active holds, maintenance, operating status, partner rules and location.
+12. Use secure authentication/session design, password hashing, rate limiting, CSRF protection when applicable, resource-level authorization and audit logs.
+13. Do not put secrets in source code or frontend bundles.
+14. Add unit, integration and end-to-end tests for important workflows.
+15. Do not claim a command or test passed unless you actually ran it and saw the result.
+16. Ask before making irreversible changes, deleting data, changing major architecture or adding paid external services.
+
+DELIVERABLES:
+A. SRS and user stories.
+B. System architecture and module boundaries.
+C. Database ERD/data dictionary and Flyway schema.
+D. API specification.
+E. Angular role-based application.
+F. Spring Boot backend.
+G. Booking and availability engine.
+H. Payment and finance workflows.
+I. Admin, partner and tourist portals.
+J. Security, tests, deployment, monitoring and documentation.
+
+Start by inspecting the repository. Then propose the folder structure, phased plan, key risks and acceptance criteria. Do not implement the entire application in one step.</code></pre>
+
+<h3>Phase 1 — Requirements and UX</h3><button class="copy" onclick="copyBlock('p1')">Copy prompt</button>
+<pre id="p1"><code>Work on Phase 1 only: product requirements and UX planning for IslandRide. Do not write application code yet.
+
+Create:
+1. A detailed SRS with functional and non-functional requirements.
+2. Role-permission matrix for tourist, partner owner/manager/staff and admin roles.
+3. User stories with acceptance criteria.
+4. Booking, cancellation, payment, refund, partner verification and vehicle handover workflows.
+5. Edge cases and business rules, especially island restrictions and date/time overlap.
+6. Page inventory and navigation map for public/tourist, partner and admin portals.
+7. Responsive wireframe descriptions for key screens.
+8. Open questions and assumptions that need product-owner approval.
+
+Clearly label MVP versus future scope. Do not invent legal rules, tax rates, payment fees or local permits. List them for validation. Save the documents under docs/requirements/ and summarize the decisions.</code></pre>
+
+<h3>Phase 2 — Repository and engineering foundation</h3><button class="copy" onclick="copyBlock('p2')">Copy prompt</button>
+<pre id="p2"><code>Implement Phase 2: repository and development foundation for IslandRide.
+
+Inspect the current repository first. Set up or verify this monorepo:
+frontend/ (Angular), backend/ (Spring Boot), infrastructure/ (Docker/Nginx), docs/, scripts/, .github/workflows/.
+
+Tasks:
+- Initialize Angular using a currently supported stable version compatible with the project.
+- Initialize Java LTS + Spring Boot backend with Maven.
+- Configure local Docker Compose for MySQL and Redis; include health checks and persistent development volumes.
+- Configure Flyway and a minimal initial migration.
+- Add environment-variable examples without real secrets.
+- Add formatting/lint/test/build scripts and a basic CI workflow.
+- Add global error response conventions, request correlation ID and OpenAPI.
+- Write README setup instructions for Windows PowerShell and macOS/Linux.
+- Keep local development simple; do not add Kubernetes.
+Run builds and tests and report actual output. Do not implement business modules yet.</code></pre>
+
+<h3>Phase 3 — Backend architecture and database</h3><button class="copy" onclick="copyBlock('p3')">Copy prompt</button>
+<pre id="p3"><code>Implement Phase 3: backend module skeleton and database design.
+
+Use package-by-feature modular monolith. Create module boundaries for identity-access, user-management, partner, geography, inventory, pricing, availability, booking, payment-finance, commission, reviews, notifications, support-disputes, administration and analytics.
+
+Before coding, propose:
+- ERD in Mermaid.
+- Table definitions, primary/foreign keys, indexes, unique constraints and deletion/retention strategy.
+- Module ownership of each table.
+- Transaction boundaries and cross-module interfaces/events.
+
+Then implement only approved foundation and migrations. Use UUID/non-guessable public identifiers where appropriate, DECIMAL for money, UTC timestamps, audit fields and optimistic locking where needed. Keep documents/images in object storage and store metadata only. Add database integration tests using Testcontainers. Do not let one module write another module's tables directly.</code></pre>
+
+<h3>Phase 4 — Authentication and authorization</h3><button class="copy" onclick="copyBlock('p4')">Copy prompt</button>
+<pre id="p4"><code>Implement authentication and access control only.
+
+Features:
+- Tourist and partner registration/login.
+- Admin accounts provisioned securely; do not allow public admin registration.
+- Email/phone verification integration points.
+- Password hashing using Argon2id or correctly configured BCrypt.
+- Secure access/refresh session design, rotation, expiry, logout and revocation.
+- Password reset using expiring single-use tokens.
+- Role-based and resource-level authorization.
+- Rate limits for login, registration, reset and sensitive endpoints.
+- CSRF protection if browser authentication uses cookies.
+- Audit important security events.
+
+Create DTOs, validation, tests and OpenAPI documentation. Add tests proving a tourist cannot access another tourist's booking and one partner cannot access another partner's vehicles or settlements. Explain the chosen cookie/token approach and its trade-offs. Never put secrets in source control.</code></pre>
+
+<h3>Phase 5 — Partner onboarding and geography</h3><button class="copy" onclick="copyBlock('p5')">Copy prompt</button>
+<pre id="p5"><code>Implement partner onboarding and geography.
+
+Partner features:
+- Business profile, owner details, contact details and business locations.
+- Upload business/identity documents through private object storage integration.
+- Verification states: DRAFT, SUBMITTED, UNDER_REVIEW, APPROVED, REJECTED, SUSPENDED.
+- Admin review, approve/reject with reason, resubmission and audit history.
+- Partner owner can manage authorized staff and permissions.
+
+Geography:
+- Country, state/UT, island, locality and pickup/return location are database-driven.
+- Seed initial Andaman destinations such as Sri Vijaya Puram, Swaraj Dweep and Shaheed Dweep, but do not hardcode geography in application logic.
+- Support operating island and pickup/return restrictions.
+- Do not assume vehicles can transfer between islands.
+
+Add APIs, Angular screens only if the current phase includes frontend work; otherwise clearly document API contracts. Add validation and authorization tests.</code></pre>
+
+<h3>Phase 6 — Vehicle inventory and pricing</h3><button class="copy" onclick="copyBlock('p6')">Copy prompt</button>
+<pre id="p6"><code>Implement partner vehicle inventory and pricing.
+
+Vehicle categories initially include bike/scooter and car, but design categories as database records. Vehicle fields should include partner, operating island/location, category, make/model, registration identifier with appropriate privacy controls, specifications, seats, transmission, fuel, images, documents, status and policies.
+
+Features:
+- Partner create/edit/submit listing; admin moderation if required.
+- Multiple images with upload validation and private/public media rules.
+- Vehicle document verification and expiry tracking where relevant.
+- Pricing rules: hourly/daily duration, seasonal rates, weekend rates, delivery/pickup charges, discounts, tax configuration and security deposit.
+- Price preview endpoint.
+- Price snapshot on booking so later edits do not alter existing booking history.
+
+Keep authoritative calculations in backend. Use DECIMAL. Add tests for duration boundaries, seasonal rules, rounding and partner ownership.</code></pre>
+
+<h3>Phase 7 — Availability and booking engine</h3><button class="copy" onclick="copyBlock('p7')">Copy prompt</button>
+<pre id="p7"><code>Implement the availability and booking engine. This is a high-risk domain: design and test concurrency before calling it complete.
+
+Availability must combine:
+- Vehicle operational status.
+- Confirmed booking intervals.
+- Unexpired temporary holds.
+- Maintenance/unavailability blocks.
+- Pickup/return buffers.
+- Partner policies and operating island/location restrictions.
+
+Implement both:
+A. Instant booking.
+B. Partner-approval booking.
+
+Create a backend-enforced booking state machine, status history, cancellation policy, approval deadline, payment deadline and expiry handling. Use transaction boundaries, row/slot locking or another justified concurrency strategy, second availability checks and idempotency keys. Do not rely on a simple unique constraint for overlapping date ranges.
+
+Tests must simulate two concurrent customers attempting the same vehicle/time, duplicate requests, expired holds, partner rejection, maintenance overlap, cancellation and late payment. Explain the locking strategy and demonstrate that only one conflicting booking can be confirmed.</code></pre>
+
+<h3>Phase 8 — Payments and financial ledger</h3><button class="copy" onclick="copyBlock('p8')">Copy prompt</button>
+<pre id="p8"><code>Implement payment and finance integration using a provider-independent adapter. Use a test/sandbox gateway first.
+
+Support:
+- Full online payment.
+- Configurable partial advance online with remaining balance collected at pickup.
+- Gateway order creation from backend-calculated amounts.
+- Signed webhook verification and gateway status verification.
+- Idempotent processing of duplicate/replayed webhooks.
+- Payment attempts, gateway references, refunds and payment status history.
+- Commission calculation, partner payable, settlements and reconciliation.
+- Security deposit tracking separately from revenue.
+- Auditable offline balance collection at pickup with collector, method, timestamp and receipt reference.
+
+The frontend redirect must never be treated as proof of payment. Confirm booking only after authoritative backend verification and valid inventory hold. If payment arrives after hold expiry, revalidate and safely handle confirmation or refund/exception. Do not store card numbers or CVV. Add integration tests for success, failure, duplicate webhook, timeout, refund and reconciliation.</code></pre>
+
+<h3>Phase 9 — Angular tourist, partner and admin portals</h3><button class="copy" onclick="copyBlock('p9')">Copy prompt</button>
+<pre id="p9"><code>Build the Angular frontend in feature slices using the approved API contract and design system.
+
+Create role-aware layouts:
+- Public layout.
+- Tourist dashboard.
+- Partner dashboard.
+- Admin dashboard.
+
+Tourist pages: home/destination, search results, filters, vehicle detail, availability selection, booking review, payment, booking confirmation, booking history/detail, cancellation, profile, support and reviews.
+
+Partner pages: onboarding, verification status, business profile, locations, fleet list/form, image/document upload, pricing, availability calendar, booking requests, booking detail, pickup/return checklist, earnings and settlements.
+
+Admin pages: dashboard, partner review queue, user/partner/listing management, booking operations, payments/refunds, commission/settlements, support/disputes, reports, settings and audit log.
+
+Use lazy-loaded routes, Reactive Forms, accessible responsive components, reusable design tokens, loading/empty/error states and pagination. Route guards improve UX only; backend remains authoritative. Never trust client-supplied prices, role claims or payment status. Add component tests and Playwright journeys.</code></pre>
+
+<h3>Phase 10 — Notifications, support and operations</h3><button class="copy" onclick="copyBlock('p10')">Copy prompt</button>
+<pre id="p10"><code>Implement notifications, support and operational workflows.
+
+Notifications: email/SMS/WhatsApp adapter interfaces, templates, booking/approval/payment/cancellation/reminder events, delivery logs, retry with backoff and safe handling of provider outages. Do not expose sensitive data in message content.
+
+Support: tourist/partner tickets, categories, priority, assignment, messages, attachments, status history and admin notes. Add dispute and damage-report workflows linked to bookings.
+
+Operations: structured logs, correlation IDs, metrics, health/readiness checks, audit events, error monitoring and a transactional outbox if needed for reliable event publication. Add runbooks for payment outage, booking conflict, notification outage and suspected account compromise.</code></pre>
+
+<h3>Phase 11 — Security, performance and release hardening</h3><button class="copy" onclick="copyBlock('p11')">Copy prompt</button>
+<pre id="p11"><code>Perform a release-readiness review; do not merely add a security checklist.
+
+Review:
+- OWASP Top 10 risks, authentication, authorization, IDOR/BOLA, XSS, CSRF, SQL injection, SSRF, upload handling and rate limits.
+- Partner/customer data isolation on every API.
+- Payment webhook signature, idempotency and replay protections.
+- Secrets, CORS, CSP, security headers, HTTPS and database/network exposure.
+- Dependency/container vulnerabilities and outdated packages.
+- Sensitive document access, retention and deletion.
+- Backup encryption and restoration test.
+- API performance, database indexes, N+1 queries, pagination and caching.
+- Booking concurrency and payment failure recovery.
+
+Run unit, integration, E2E, load and security scans where configured. Report findings by severity with evidence, affected files/endpoints, remediation and retest results. Do not claim zero vulnerabilities. Do not silently suppress failing tests or scans.</code></pre>
+
+<h3>Phase 12 — Deployment and launch</h3><button class="copy" onclick="copyBlock('p12')">Copy prompt</button>
+<pre id="p12"><code>Prepare IslandRide for a controlled production launch.
+
+Deliver:
+- Production architecture and deployment diagram.
+- Docker images and production configuration.
+- Nginx routing, HTTPS and security headers.
+- Separate staging and production environments.
+- Managed/private MySQL, Redis and object storage configuration.
+- Secret manager/environment configuration; no secrets in repository.
+- Flyway migration and rollback/forward-fix plan.
+- CI/CD with approval gate for production.
+- Database backup schedule and tested restore procedure.
+- Monitoring dashboards and actionable alerts.
+- DNS/domain and certificate checklist.
+- Payment gateway live-mode checklist and webhook endpoint verification.
+- Admin bootstrap procedure and least-privilege access.
+- UAT checklist, pilot partner onboarding and incident runbooks.
+- Rollback plan and post-launch monitoring plan.
+
+Do not deploy or incur paid costs without my explicit approval. Provide exact commands and explain each step.</code></pre>
+
+<h3>Prompt to continue work in a new AI session</h3><button class="copy" onclick="copyBlock('continue')">Copy prompt</button>
+<pre id="continue"><code>Continue the IslandRide marketplace project from the current repository state. First inspect the repository, README, docs and recent changes. Identify the last completed phase, actual build/test status and any unfinished tasks. Do not assume previous AI claims are correct—verify them. Summarize the current architecture and decisions, then propose the smallest next implementation step. Do not rewrite completed modules or change architecture without explaining the reason and getting approval. Follow the IslandRide master engineering rules.</code></pre>
+
+<h3>How to use these prompts correctly</h3><ol><li>Create the repository and add this blueprint to <code>docs/</code>.</li><li>Paste the master prompt into your coding assistant and let it inspect the repository.</li><li>Complete Phase 1 and approve the SRS, workflows and open questions.</li><li>Run one phase at a time. Review the proposed file changes before accepting them.</li><li>Run tests locally. Ask the assistant to fix failures before proceeding.</li><li>Commit each stable milestone with a meaningful Git commit message.</li><li>Keep API contracts and database migrations synchronized with frontend work.</li><li>Use sandbox payment credentials until the full test suite passes.</li><li>Do a staging/UAT pilot with a small number of real partners before public launch.</li></ol>
+</section>
+
+<section class="section" id="acceptance"><h2>22. Definition of done</h2>
+A feature is not complete merely because its screen exists. Mark it done only when:
+<ul><li>Requirements and acceptance criteria are met.</li><li>Backend validation and authorization are implemented.</li><li>Database migrations are reviewed and tested.</li><li>Frontend loading, success, empty and error states work.</li><li>Unit and integration tests cover business rules and failure paths.</li><li>API documentation and user-facing help are updated.</li><li>Logs/audit events are appropriate and contain no secrets.</li><li>Accessibility and responsive behavior are checked.</li><li>Security and ownership tests pass.</li><li>Build, tests and deployment checks actually pass in CI.</li></ul>
+</section>
+
+
+<section class="section" id="recommendations"><h2>24. Additional architecture recommendations</h2>
+<p>The blueprint already includes the core architecture recommendations. This section makes the important choices more explicit so the team can use them as default engineering decisions during implementation.</p>
+<div class="grid">
+<div class="card"><h3>1. Launch as a modular monolith</h3><p>One Spring Boot deployable with strict module boundaries. Avoid microservices, Kubernetes, Kafka and complex service meshes until measurable scale or team ownership requires them.</p></div>
+<div class="card"><h3>2. Keep the backend authoritative</h3><p>Only the backend decides price, availability, commission, booking state, permissions and payment status. The browser displays results; it does not make trusted decisions.</p></div>
+<div class="card"><h3>3. Treat booking as the highest-risk module</h3><p>Design interval conflicts, holds, expiry, concurrent requests, partner approval and late payment before polishing screens. Build concurrency tests early.</p></div>
+<div class="card"><h3>4. Use a financial ledger mindset</h3><p>Keep rental amount, tax, deposit, advance, pickup balance, gateway fee, commission, partner payable, refund and settlement separately traceable. Never overwrite financial history.</p></div>
+<div class="card"><h3>5. Make partner onboarding trustworthy</h3><p>Use a review queue, explicit verification states, rejection reasons, document expiry and audit history. Do not publish unapproved partner listings by default.</p></div>
+<div class="card"><h3>6. Build location rules into the domain</h3><p>Every vehicle must have an operating location/island and pickup/return rules. Do not assume a vehicle can be transferred between islands or returned at a different island.</p></div>
+<div class="card"><h3>7. Use private media storage</h3><p>Vehicle gallery images may be public through controlled delivery; identity, licence and business documents must be private, access-checked and short-lived through signed URLs.</p></div>
+<div class="card"><h3>8. Add transactional reliability</h3><p>Use idempotency for booking/payment actions and consider a transactional outbox for notifications and integration events. A successful database transaction should not silently lose its required event.</p></div>
+<div class="card"><h3>9. Keep a booking price snapshot</h3><p>Save the itemized price, applied rules, tax configuration and policy version used when the booking was created. Later price edits must not rewrite old bookings.</p></div>
+<div class="card"><h3>10. Separate deposits from revenue</h3><p>Track security deposits as held/refundable amounts with their own collection, deduction and return workflow. Do not count them as platform commission or rental income.</p></div>
+<div class="card"><h3>11. Design admin permissions narrowly</h3><p>Separate operations, support and finance permissions. Require stronger authentication and audit logging for refunds, settlements, role changes and sensitive document access.</p></div>
+<div class="card"><h3>12. Start with a pilot</h3><p>Launch with a small number of verified partners and a limited set of islands/locations. Validate booking operations, handover, refunds and partner settlement before broad marketing.</p></div>
+</div>
+<h3>Recommended MVP boundaries</h3>
+<table><tr><th>Build now</th><th>Defer until validated</th></tr>
+<tr><td>Responsive web app; bike/car listings; island/location filters; partner verification; vehicle calendar; instant and approval booking; full and partial payments; basic cancellation/refund; admin operations; basic reviews/support; audit and monitoring.</td><td>Native mobile apps; AI recommendations/chatbot; loyalty points; dynamic surge pricing; complex subscriptions; multi-country tax engine; microservices; real-time chat; boats/water sports; travel packages; advanced BI/data warehouse.</td></tr></table>
+<h3>Practical technical defaults</h3>
+<ul>
+<li><b>API:</b> version under <code>/api/v1</code>; publish OpenAPI and generate/validate frontend API types where practical.</li>
+<li><b>Database:</b> MySQL is the source of truth. Use transactions and constraints; use Redis only for cache/ephemeral coordination, never as the only record of a booking or payment.</li>
+<li><b>Search:</b> start with indexed MySQL filters and pagination. Add a dedicated search engine only when real search volume or relevance needs justify it.</li>
+<li><b>Frontend:</b> one Angular app with route-level lazy loading and shared design tokens. Do not split into micro-frontends for the MVP.</li>
+<li><b>Authentication:</b> for a first-party browser app, prefer secure HttpOnly, SameSite cookies with CSRF protection for state-changing requests; finalize the design based on deployment topology and any future mobile clients.</li>
+<li><b>Payments:</b> use gateway sandbox first, verify webhooks server-side, reconcile gateway records and never trust browser callbacks.</li>
+<li><b>Files:</b> use object storage with upload limits, MIME/content validation, malware scanning where available and private access for sensitive documents.</li>
+<li><b>Dates:</b> store UTC instants, retain the relevant destination time-zone identifier, and test daylight/time-zone and pickup/return boundary cases.</li>
+<li><b>Deployment:</b> use managed database and object storage if budget allows; automate backups and test restoration before public launch.</li>
+<li><b>Versions:</b> choose supported stable Angular, Java LTS and Spring Boot versions at project kickoff; pin versions and document upgrade policy rather than hardcoding an outdated version.</li>
+</ul>
+<h3>Suggested delivery gates</h3>
+<ol><li><b>Gate A — Product approval:</b> SRS, role matrix, cancellation/approval rules, payment policy and island operations approved.</li><li><b>Gate B — Technical foundation:</b> repo, CI, migrations, authentication approach, module boundaries and staging environment work.</li><li><b>Gate C — Booking correctness:</b> conflict/concurrency tests pass and booking lifecycle is auditable.</li><li><b>Gate D — Financial correctness:</b> verified gateway callbacks, refunds, partial balance and reconciliation are tested.</li><li><b>Gate E — Pilot readiness:</b> security review, legal validation, restore test, support runbooks and partner UAT are complete.</li></ol>
+<div class="callout warn"><b>Important:</b> These are engineering recommendations, not legal advice. Confirm applicable vehicle rental rules, permits, insurance, consumer obligations, taxation, privacy and payment requirements for the actual operating model before launch.</div>
+</section>
+
+<section class="section" id="decisions"><h2>23. Decisions to confirm before production</h2>
+<table><tr><th>Decision</th><th>Suggested starting point</th><th>Why it matters</th></tr>
+<tr><td>Brand/domain</td><td>Confirm final name and domain</td><td>Branding, email and public URLs.</td></tr>
+<tr><td>Partner legal verification</td><td>Define document checklist with local advisor</td><td>Compliance and fraud prevention.</td></tr>
+<tr><td>Cancellation/refund policy</td><td>Configurable per partner with platform minimum rules</td><td>Customer trust and disputes.</td></tr>
+<tr><td>Approval expiry</td><td>Configurable window</td><td>Prevents requests staying pending indefinitely.</td></tr>
+<tr><td>Advance amount</td><td>Configurable fixed amount or percentage</td><td>Partner and customer cash-flow needs.</td></tr>
+<tr><td>Security deposit</td><td>Per vehicle/partner policy, clearly disclosed</td><td>Damage and liability handling.</td></tr>
+<tr><td>Commission</td><td>Pilot and validate 3–5% hypothesis</td><td>Marketplace economics and partner adoption.</td></tr>
+<tr><td>Pickup/return rules</td><td>Per partner and location</td><td>Island logistics and operational constraints.</td></tr>
+<tr><td>Notifications</td><td>Email first; add SMS/WhatsApp based on need/cost</td><td>Delivery reliability and ongoing cost.</td></tr>
+<tr><td>Hosting budget</td><td>Choose after traffic, backup and uptime needs are estimated</td><td>Recurring cost and capacity.</td></tr></table>
+<div class="callout good"><b>Recommended first milestone:</b> approve the SRS, role matrix, booking/payment policies and database ERD. Then build the repository foundation and implement identity/partner onboarding before inventory and booking.</div>
+</section>
+<footer>IslandRide technical blueprint · Prepared as a working implementation guide · Review legal, tax, payment and local operating requirements before launch.</footer>
+</main>
+</div>
+<script>
+function copyBlock(id){
+  const el=document.getElementById(id);
+  const text=el.innerText;
+  if(navigator.clipboard && window.isSecureContext){
+    navigator.clipboard.writeText(text).then(()=>toast('Prompt copied')).catch(()=>fallbackCopy(text));
+  }else{fallbackCopy(text);}
+}
+function fallbackCopy(text){
+  const area=document.createElement('textarea');area.value=text;area.style.position='fixed';area.style.opacity='0';document.body.appendChild(area);area.select();
+  try{document.execCommand('copy');toast('Prompt copied');}catch(e){toast('Select and copy the prompt manually');}
+  area.remove();
+}
+function toast(message){
+  let t=document.getElementById('copy-toast');
+  if(!t){t=document.createElement('div');t.id='copy-toast';t.style.cssText='position:fixed;bottom:20px;right:20px;background:#14233d;color:white;padding:10px 16px;border-radius:8px;z-index:99;box-shadow:0 4px 20px #0003';document.body.appendChild(t);}
+  t.textContent=message;t.style.display='block';clearTimeout(window.__toastTimer);window.__toastTimer=setTimeout(()=>t.style.display='none',1800);
+}
+</script>
+</body>
+</html>
