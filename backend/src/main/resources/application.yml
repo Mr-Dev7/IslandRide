@@ -11,8 +11,6 @@ spring:
   # Jackson JSON Serialization
   jackson:
     time-zone: UTC
-    serialization:
-      write-dates-as-timestamps: false
 
   # Servlet Configuration
   servlet:
