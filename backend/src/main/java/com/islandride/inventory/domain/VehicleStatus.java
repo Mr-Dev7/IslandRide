@@ -4,7 +4,17 @@ public enum VehicleStatus {
     DRAFT,
     PENDING_REVIEW,
     ACTIVE,
-    UNDER_MAINTENANCE,
-    RETIRED
-}
+    REJECTED,
+    PAUSED,
+    MAINTENANCE,
+    SUSPENDED,
+    ARCHIVED;
 
+    public boolean isPubliclyDiscoverable() {
+        return this == ACTIVE;
+    }
+
+    public boolean isEditableByPartner() {
+        return this != ARCHIVED;
+    }
+}

@@ -13,5 +13,7 @@ public interface IslandRepository extends JpaRepository<Island, Long> {
     Optional<Island> findByCode(String code);
 
     List<Island> findByActiveTrueOrderByDisplayOrderAsc();
+
+    List<Island> findAllByOrderByDisplayOrderAsc();
 }
 

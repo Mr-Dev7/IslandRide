@@ -17,6 +17,16 @@ export const routes: Routes = [
         loadComponent: () => import('./features/home/home.component').then((m) => m.HomeComponent),
       },
       {
+        path: 'search',
+        loadComponent: () =>
+          import('./features/catalog/vehicle-catalog.component').then((m) => m.VehicleCatalogComponent),
+      },
+      {
+        path: 'vehicles/:publicId',
+        loadComponent: () =>
+          import('./features/catalog/vehicle-detail.component').then((m) => m.VehicleDetailComponent),
+      },
+      {
         path: 'auth/login',
         loadComponent: () => import('./features/auth/login/login.component').then((m) => m.LoginComponent),
       },
@@ -89,6 +99,45 @@ export const routes: Routes = [
             (m) => m.PartnerDashboardComponent
           ),
       },
+      {
+        path: 'fleet',
+        loadComponent: () =>
+          import('./features/partner-fleet/partner-fleet-list.component').then(
+            (m) => m.PartnerFleetListComponent
+          ),
+      },
+      {
+        path: 'fleet/new',
+        canActivate: [roleGuard],
+        data: { roles: ['ROLE_PARTNER_OWNER', 'ROLE_PARTNER_MANAGER'] },
+        loadComponent: () =>
+          import('./features/partner-fleet/partner-vehicle-form.component').then(
+            (m) => m.PartnerVehicleFormComponent
+          ),
+      },
+      {
+        path: 'fleet/:publicId/edit',
+        canActivate: [roleGuard],
+        data: { roles: ['ROLE_PARTNER_OWNER', 'ROLE_PARTNER_MANAGER'] },
+        loadComponent: () =>
+          import('./features/partner-fleet/partner-vehicle-form.component').then(
+            (m) => m.PartnerVehicleFormComponent
+          ),
+      },
+      {
+        path: 'fleet/:publicId',
+        loadComponent: () =>
+          import('./features/partner-fleet/partner-vehicle-manage.component').then(
+            (m) => m.PartnerVehicleManageComponent
+          ),
+      },
+      {
+        path: 'calendar',
+        loadComponent: () =>
+          import('./features/partner-fleet/partner-calendar-hubs.component').then(
+            (m) => m.PartnerCalendarHubsComponent
+          ),
+      },
     ],
   },
 
@@ -106,6 +155,33 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/admin-dashboard/admin-dashboard.component').then(
             (m) => m.AdminDashboardComponent
+          ),
+      },
+      {
+        path: 'fleet',
+        canActivate: [roleGuard],
+        data: { roles: ['ROLE_SUPER_ADMIN', 'ROLE_OPERATIONS_ADMIN'] },
+        loadComponent: () =>
+          import('./features/admin-fleet/admin-moderation-queue.component').then(
+            (m) => m.AdminModerationQueueComponent
+          ),
+      },
+      {
+        path: 'fleet/:publicId',
+        canActivate: [roleGuard],
+        data: { roles: ['ROLE_SUPER_ADMIN', 'ROLE_OPERATIONS_ADMIN'] },
+        loadComponent: () =>
+          import('./features/admin-fleet/admin-vehicle-review.component').then(
+            (m) => m.AdminVehicleReviewComponent
+          ),
+      },
+      {
+        path: 'catalog-config',
+        canActivate: [roleGuard],
+        data: { roles: ['ROLE_SUPER_ADMIN', 'ROLE_OPERATIONS_ADMIN'] },
+        loadComponent: () =>
+          import('./features/admin-fleet/admin-catalog-config.component').then(
+            (m) => m.AdminCatalogConfigComponent
           ),
       },
     ],

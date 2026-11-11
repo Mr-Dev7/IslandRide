@@ -53,3 +53,8 @@ docker-data/
 mysql-data/
 redis-data/
 
+# Local Media Storage
+storage/
+backend/storage/
+
+

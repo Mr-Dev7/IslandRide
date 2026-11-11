@@ -72,5 +72,17 @@ islandride:
     username: ${MAIL_USERNAME:}
     password: ${MAIL_PASSWORD:}
     from: ${MAIL_FROM:noreply@islandride.in}
+  storage:
+    provider: ${STORAGE_PROVIDER:local}
+    local-root: ${STORAGE_LOCAL_ROOT:./storage}
+    max-image-bytes: ${STORAGE_MAX_IMAGE_BYTES:5242880}
+    max-document-bytes: ${STORAGE_MAX_DOCUMENT_BYTES:5242880}
+    max-images-per-vehicle: ${STORAGE_MAX_IMAGES_PER_VEHICLE:10}
+    signing-secret: ${MEDIA_SIGNING_SECRET:${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}}
+  ratelimit:
+    enabled: ${RATELIMIT_ENABLED:true}
+    upload-per-minute: ${RATELIMIT_UPLOAD_PER_MINUTE:60}
+    catalog-search-per-minute: ${RATELIMIT_CATALOG_PER_MINUTE:300}
+
 
 

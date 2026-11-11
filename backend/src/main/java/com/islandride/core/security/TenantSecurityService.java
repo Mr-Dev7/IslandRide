@@ -5,13 +5,16 @@ import com.islandride.partner.domain.PartnerStaff;
 import com.islandride.partner.domain.VerificationStatus;
 import com.islandride.partner.repository.BusinessRepository;
 import com.islandride.partner.repository.PartnerStaffRepository;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -48,13 +51,17 @@ public class TenantSecurityService {
 
         // Check if user is the direct business owner
         Optional<Business> businessOpt = businessRepository.findById(businessId);
-        if (businessOpt.isPresent() && businessOpt.get().getOwnerUser().getId().equals(principal.getId())) {
+        if (businessOpt.isPresent()
+                && !businessOpt.get().isDeleted()
+                && businessOpt.get().getOwnerUser().getId().equals(principal.getId())) {
             return true;
         }
 
         // Check active partner staff record in database
         Optional<PartnerStaff> staffOpt = partnerStaffRepository.findByBusinessIdAndUserId(businessId, principal.getId());
-        return staffOpt.map(PartnerStaff::isActive).orElse(false);
+        return businessOpt.isPresent()
+                && !businessOpt.get().isDeleted()
+                && staffOpt.map(PartnerStaff::isActive).orElse(false);
     }
 
     /**
@@ -67,7 +74,7 @@ public class TenantSecurityService {
             return false;
         }
         return businessRepository.findById(businessId)
-                .map(b -> b.getVerificationStatus() == VerificationStatus.APPROVED)
+                .map(b -> !b.isDeleted() && b.getVerificationStatus() == VerificationStatus.APPROVED)
                 .orElse(false);
     }
 
@@ -79,6 +86,100 @@ public class TenantSecurityService {
     @Transactional(readOnly = true)
     public boolean isAuthorizedForBusinessInventory(Long businessId) {
         return hasBusinessAccess(businessId) && isBusinessApproved(businessId);
+    }
+
+    /**
+     * Verifies that the authenticated user possesses active management authority (OWNER or MANAGER,
+     * never read/handover-only STAFF) for inventory write operations on an APPROVED business.
+     */
+    @Transactional(readOnly = true)
+    public boolean isAuthorizedForBusinessInventoryWrite(Long businessId) {
+        return hasBusinessManagementAccess(businessId) && isBusinessApproved(businessId);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean hasBusinessManagementAccess(Long businessId) {
+        UserPrincipal principal = getCurrentPrincipal();
+        if (principal == null || businessId == null) {
+            return false;
+        }
+        if (principal.hasRole("ROLE_SUPER_ADMIN") || principal.hasRole("ROLE_OPERATIONS_ADMIN")) {
+            return true;
+        }
+        Optional<Business> businessOpt = businessRepository.findById(businessId);
+        if (businessOpt.isEmpty() || businessOpt.get().isDeleted()) {
+            return false;
+        }
+        if (businessOpt.get().getOwnerUser().getId().equals(principal.getId())
+                && (principal.hasRole("ROLE_PARTNER_OWNER") || principal.hasRole("ROLE_PARTNER_MANAGER"))) {
+            return true;
+        }
+        if (!(principal.hasRole("ROLE_PARTNER_OWNER") || principal.hasRole("ROLE_PARTNER_MANAGER"))) {
+            return false;
+        }
+        Optional<PartnerStaff> staffOpt = partnerStaffRepository.findByBusinessIdAndUserId(businessId, principal.getId());
+        return staffOpt.filter(PartnerStaff::isActive)
+                .map(s -> "OWNER".equalsIgnoreCase(s.getRoleInBusiness()) || "MANAGER".equalsIgnoreCase(s.getRoleInBusiness()))
+                .orElse(false);
+    }
+
+    /**
+     * Resolves authorized active businesses from the database for the current partner user.
+     * Supports single and multiple business memberships cleanly without trusting client claims.
+     */
+    @Transactional(readOnly = true)
+    public List<Business> getAuthorizedBusinesses() {
+        UserPrincipal principal = getCurrentPrincipal();
+        if (principal == null) {
+            return List.of();
+        }
+        Map<Long, Business> result = new LinkedHashMap<>();
+        for (Business b : businessRepository.findAllByOwnerUserId(principal.getId())) {
+            if (!b.isDeleted()) {
+                result.put(b.getId(), b);
+            }
+        }
+        List<PartnerStaff> activeStaff = partnerStaffRepository.findAllByUserIdAndActiveTrue(principal.getId());
+        for (PartnerStaff staff : activeStaff) {
+            Business b = staff.getBusiness();
+            if (b != null && !b.isDeleted()) {
+                result.putIfAbsent(b.getId(), b);
+            }
+        }
+        return new ArrayList<>(result.values());
+    }
+
+    /**
+     * Resolves a single target business for partner operations strictly via DB membership.
+     */
+    @Transactional(readOnly = true)
+    public Business resolvePartnerBusinessForRead(String optionalBusinessPublicId) {
+        List<Business> authorized = getAuthorizedBusinesses();
+        if (authorized.isEmpty()) {
+            throw new AccessDeniedException("No active partner business membership found.");
+        }
+        if (optionalBusinessPublicId == null || optionalBusinessPublicId.isBlank()) {
+            return authorized.getFirst();
+        }
+        return authorized.stream()
+                .filter(b -> optionalBusinessPublicId.equals(b.getPublicId()))
+                .findFirst()
+                .orElseThrow(() -> new AccessDeniedException("You are not authorized to access the specified business."));
+    }
+
+    /**
+     * Resolves and verifies management write access + APPROVED business status before allowing inventory mutations.
+     */
+    @Transactional(readOnly = true)
+    public Business resolvePartnerBusinessForInventoryWrite(String optionalBusinessPublicId) {
+        Business business = resolvePartnerBusinessForRead(optionalBusinessPublicId);
+        if (!hasBusinessManagementAccess(business.getId())) {
+            throw new AccessDeniedException("Your partner role does not permit modifying vehicle inventory, pricing, or availability.");
+        }
+        if (!isBusinessApproved(business.getId())) {
+            throw new AccessDeniedException("Your rental business must be verified and APPROVED before managing vehicle inventory.");
+        }
+        return business;
     }
 
     /**
@@ -101,21 +202,29 @@ public class TenantSecurityService {
      */
     @Transactional(readOnly = true)
     public List<Long> getAuthorizedBusinessIds() {
+        return getAuthorizedBusinesses().stream().map(Business::getId).toList();
+    }
+
+    public Long getCurrentUserIdOrNull() {
         UserPrincipal principal = getCurrentPrincipal();
-        if (principal == null) {
-            return List.of();
-        }
+        return principal != null ? principal.getId() : null;
+    }
 
-        List<Long> ids = new ArrayList<>();
-        businessRepository.findByOwnerUserId(principal.getId()).ifPresent(b -> ids.add(b.getId()));
-
-        List<PartnerStaff> activeStaff = partnerStaffRepository.findAllByUserIdAndActiveTrue(principal.getId());
-        for (PartnerStaff staff : activeStaff) {
-            if (!ids.contains(staff.getBusiness().getId())) {
-                ids.add(staff.getBusiness().getId());
-            }
+    @Transactional(readOnly = true)
+    public void requireBusinessReadAccess(Long businessId) {
+        if (!hasBusinessAccess(businessId)) {
+            throw new AccessDeniedException("You are not authorized to access this rental business resource.");
         }
-        return ids;
+    }
+
+    @Transactional(readOnly = true)
+    public void requireBusinessInventoryWriteAccess(Long businessId) {
+        if (!hasBusinessManagementAccess(businessId)) {
+            throw new AccessDeniedException("Your partner role does not permit modifying vehicle inventory, pricing, or availability.");
+        }
+        if (!isBusinessApproved(businessId)) {
+            throw new AccessDeniedException("Your rental business must be verified and APPROVED before managing vehicle inventory.");
+        }
     }
 
     private UserPrincipal getCurrentPrincipal() {

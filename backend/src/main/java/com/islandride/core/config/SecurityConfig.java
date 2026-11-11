@@ -6,6 +6,7 @@ import com.islandride.core.security.JwtAuthenticationFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -86,6 +87,15 @@ public class SecurityConfig {
                     "/v3/api-docs/**",
                     "/swagger-ui/**",
                     "/swagger-ui.html"
+                ).permitAll()
+
+                // Public Geography, Category & Vehicle Catalog Discovery Endpoints (Read-Only)
+                .requestMatchers(HttpMethod.GET,
+                    "/api/v1/locations/**",
+                    "/api/v1/categories/**",
+                    "/api/v1/document-types/**",
+                    "/api/v1/vehicles/**",
+                    "/api/v1/media/vehicle-images/**"
                 ).permitAll()
 
                 // Administrative Governance Portal Endpoints

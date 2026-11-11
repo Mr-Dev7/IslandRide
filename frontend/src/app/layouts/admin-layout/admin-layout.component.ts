@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
@@ -14,7 +14,10 @@ import { AuthService } from '../../core/services/auth.service';
         <nav class="admin-nav">
           <a routerLink="/admin">Overview</a>
           <a routerLink="/admin/partners">Partner KYC</a>
-          <a routerLink="/admin/fleet">Fleet Moderation</a>
+          @if (canModerateFleet()) {
+            <a routerLink="/admin/fleet">Fleet Moderation</a>
+            <a routerLink="/admin/catalog-config">Catalog & Islands</a>
+          }
           <a routerLink="/admin/bookings">Bookings</a>
           <a routerLink="/admin/settlements">Settlements</a>
         </nav>
@@ -55,6 +58,11 @@ import { AuthService } from '../../core/services/auth.service';
 })
 export class AdminLayoutComponent {
   readonly authService = inject(AuthService);
+
+  readonly canModerateFleet = computed(() => {
+    const roles = this.authService.currentUser()?.roles ?? [];
+    return roles.includes('ROLE_SUPER_ADMIN') || roles.includes('ROLE_OPERATIONS_ADMIN');
+  });
 
   logout(): void {
     this.authService.logout().subscribe();

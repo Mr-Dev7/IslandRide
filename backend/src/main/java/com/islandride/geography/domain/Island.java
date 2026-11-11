@@ -16,6 +16,9 @@ public class Island extends BaseEntity {
     @Column(name = "name", nullable = false, length = 100)
     private String name;
 
+    @Column(name = "display_alias", length = 120)
+    private String displayAlias;
+
     @Column(name = "code", nullable = false, unique = true, length = 30)
     private String code;
 
@@ -31,6 +34,18 @@ public class Island extends BaseEntity {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt = Instant.now();
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version = 0L;
+
+    @PreUpdate
+    protected void onUpdate() {
+        this.updatedAt = Instant.now();
+    }
+
     public State getState() {
         return state;
     }
@@ -45,6 +60,14 @@ public class Island extends BaseEntity {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getDisplayAlias() {
+        return displayAlias;
+    }
+
+    public void setDisplayAlias(String displayAlias) {
+        this.displayAlias = displayAlias;
     }
 
     public String getCode() {
@@ -85,6 +108,22 @@ public class Island extends BaseEntity {
 
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(Instant updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
     }
 }
 

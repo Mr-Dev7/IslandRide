@@ -15,5 +15,11 @@ public interface LocationRepository extends JpaRepository<Location, Long> {
     Optional<Location> findByCode(String code);
 
     List<Location> findByIslandIdAndActiveTrue(Long islandId);
+
+    List<Location> findByIslandIdAndActiveTrueAndDeletedAtIsNullOrderByNameAsc(Long islandId);
+
+    List<Location> findByActiveTrueAndDeletedAtIsNullOrderByIslandIdAscNameAsc();
+
+    List<Location> findByDeletedAtIsNullOrderByIslandIdAscNameAsc();
 }
 
