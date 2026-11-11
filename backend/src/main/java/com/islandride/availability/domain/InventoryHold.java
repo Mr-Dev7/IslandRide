@@ -1,6 +1,7 @@
 package com.islandride.availability.domain;
 
 import com.islandride.core.domain.BaseEntity;
+import com.islandride.geography.domain.Location;
 import com.islandride.identityaccess.domain.User;
 import com.islandride.inventory.domain.Vehicle;
 import jakarta.persistence.*;
@@ -23,6 +24,18 @@ public class InventoryHold extends BaseEntity {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "hold_purpose", nullable = false, length = 30)
+    private HoldPurpose holdPurpose = HoldPurpose.CHECKOUT;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "pickup_location_id")
+    private Location pickupLocation;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "return_location_id")
+    private Location returnLocation;
+
     @Column(name = "start_time", nullable = false)
     private Instant startTime;
 
@@ -32,12 +45,18 @@ public class InventoryHold extends BaseEntity {
     @Column(name = "hold_duration_seconds", nullable = false)
     private int holdDurationSeconds = 600;
 
+    @Column(name = "turnaround_buffer_minutes", nullable = false)
+    private int turnaroundBufferMinutes = 60;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private HoldStatus status = HoldStatus.HELD;
 
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
+
+    @Column(name = "idempotency_key", length = 128)
+    private String idempotencyKey;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
@@ -125,6 +144,46 @@ public class InventoryHold extends BaseEntity {
 
     public void setExpiresAt(Instant expiresAt) {
         this.expiresAt = expiresAt;
+    }
+
+    public HoldPurpose getHoldPurpose() {
+        return holdPurpose;
+    }
+
+    public void setHoldPurpose(HoldPurpose holdPurpose) {
+        this.holdPurpose = holdPurpose;
+    }
+
+    public Location getPickupLocation() {
+        return pickupLocation;
+    }
+
+    public void setPickupLocation(Location pickupLocation) {
+        this.pickupLocation = pickupLocation;
+    }
+
+    public Location getReturnLocation() {
+        return returnLocation;
+    }
+
+    public void setReturnLocation(Location returnLocation) {
+        this.returnLocation = returnLocation;
+    }
+
+    public int getTurnaroundBufferMinutes() {
+        return turnaroundBufferMinutes;
+    }
+
+    public void setTurnaroundBufferMinutes(int turnaroundBufferMinutes) {
+        this.turnaroundBufferMinutes = turnaroundBufferMinutes;
+    }
+
+    public String getIdempotencyKey() {
+        return idempotencyKey;
+    }
+
+    public void setIdempotencyKey(String idempotencyKey) {
+        this.idempotencyKey = idempotencyKey;
     }
 
     public Instant getCreatedAt() {

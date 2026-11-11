@@ -227,6 +227,98 @@ public class TenantSecurityService {
         }
     }
 
+    @Transactional(readOnly = true)
+    public boolean canApproveOrRejectBookings(Long businessId) {
+        return hasBusinessManagementAccess(businessId) && isBusinessApproved(businessId);
+    }
+
+    @Transactional(readOnly = true)
+    public void requireBookingApprovalAccess(Long businessId) {
+        if (!canApproveOrRejectBookings(businessId)) {
+            throw new AccessDeniedException("Booking approval requires an active OWNER or MANAGER membership on an APPROVED business.");
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public boolean canRecordHandover(Long businessId) {
+        return hasOperationalStaffPermission(businessId, PartnerStaff::isCanRecordHandover);
+    }
+
+    @Transactional(readOnly = true)
+    public void requireHandoverAccess(Long businessId) {
+        if (!canRecordHandover(businessId)) {
+            throw new AccessDeniedException("Your partner account is not permitted to record vehicle handovers.");
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public boolean canCollectOfflinePayments(Long businessId) {
+        return hasOperationalStaffPermission(businessId, PartnerStaff::isCanCollectOfflinePayments);
+    }
+
+    @Transactional(readOnly = true)
+    public void requireOfflineCollectionAccess(Long businessId) {
+        if (!canCollectOfflinePayments(businessId)) {
+            throw new AccessDeniedException("Your partner account is not permitted to collect offline payments.");
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public boolean canMarkNoShow(Long businessId) {
+        return hasOperationalStaffPermission(businessId, PartnerStaff::isCanMarkNoShow);
+    }
+
+    @Transactional(readOnly = true)
+    public void requireNoShowAccess(Long businessId) {
+        if (!canMarkNoShow(businessId)) {
+            throw new AccessDeniedException("Your partner account is not permitted to mark bookings as NO_SHOW.");
+        }
+    }
+
+    public boolean canEscalateRefund() {
+        UserPrincipal principal = getCurrentPrincipal();
+        return principal != null && (principal.hasRole("ROLE_SUPER_ADMIN")
+                || principal.hasRole("ROLE_FINANCE_ADMIN")
+                || principal.hasRole("ROLE_OPERATIONS_ADMIN")
+                || principal.hasRole("ROLE_SUPPORT_AGENT"));
+    }
+
+    public boolean canApproveFinancialRefunds() {
+        UserPrincipal principal = getCurrentPrincipal();
+        return principal != null && (principal.hasRole("ROLE_SUPER_ADMIN")
+                || principal.hasRole("ROLE_FINANCE_ADMIN"));
+    }
+
+    public void requireFinancialRefundApprovalAccess() {
+        if (!canApproveFinancialRefunds()) {
+            throw new AccessDeniedException("Financial refund approvals require FINANCE_ADMIN or SUPER_ADMIN authority.");
+        }
+    }
+
+    private boolean hasOperationalStaffPermission(Long businessId,
+                                                  java.util.function.Predicate<PartnerStaff> permissionCheck) {
+        UserPrincipal principal = getCurrentPrincipal();
+        if (principal == null || businessId == null) {
+            return false;
+        }
+        if (principal.hasRole("ROLE_SUPER_ADMIN") || principal.hasRole("ROLE_OPERATIONS_ADMIN")) {
+            return true;
+        }
+        if (!isBusinessApproved(businessId)) {
+            return false;
+        }
+        if (hasBusinessManagementAccess(businessId)) {
+            return true;
+        }
+        if (!hasBusinessAccess(businessId)) {
+            return false;
+        }
+        return partnerStaffRepository.findByBusinessIdAndUserId(businessId, principal.getId())
+                .filter(PartnerStaff::isActive)
+                .map(permissionCheck::test)
+                .orElse(false);
+    }
+
     private UserPrincipal getCurrentPrincipal() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.getPrincipal() instanceof UserPrincipal principal) {

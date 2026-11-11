@@ -23,6 +23,12 @@ public class Commission extends BaseEntity {
     @Column(name = "gross_booking_amount", nullable = false, precision = 10, scale = 2)
     private BigDecimal grossBookingAmount;
 
+    @Column(name = "tax_excluded_amount", nullable = false, precision = 10, scale = 2)
+    private BigDecimal taxExcludedAmount = BigDecimal.ZERO;
+
+    @Column(name = "deposit_excluded_amount", nullable = false, precision = 10, scale = 2)
+    private BigDecimal depositExcludedAmount = BigDecimal.ZERO;
+
     @Column(name = "commission_percentage", nullable = false, precision = 5, scale = 2)
     private BigDecimal commissionPercentage = new BigDecimal("4.00");
 
@@ -31,6 +37,15 @@ public class Commission extends BaseEntity {
 
     @Column(name = "partner_payout_amount", nullable = false, precision = 10, scale = 2)
     private BigDecimal partnerPayoutAmount;
+
+    @Column(name = "online_collected_amount", nullable = false, precision = 10, scale = 2)
+    private BigDecimal onlineCollectedAmount = BigDecimal.ZERO;
+
+    @Column(name = "offline_collected_amount", nullable = false, precision = 10, scale = 2)
+    private BigDecimal offlineCollectedAmount = BigDecimal.ZERO;
+
+    @Column(name = "partner_receivable_amount", nullable = false, precision = 10, scale = 2)
+    private BigDecimal partnerReceivableAmount = BigDecimal.ZERO;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
@@ -103,6 +118,46 @@ public class Commission extends BaseEntity {
 
     public void setPartnerPayoutAmount(BigDecimal partnerPayoutAmount) {
         this.partnerPayoutAmount = partnerPayoutAmount;
+    }
+
+    public BigDecimal getTaxExcludedAmount() {
+        return taxExcludedAmount;
+    }
+
+    public void setTaxExcludedAmount(BigDecimal taxExcludedAmount) {
+        this.taxExcludedAmount = taxExcludedAmount;
+    }
+
+    public BigDecimal getDepositExcludedAmount() {
+        return depositExcludedAmount;
+    }
+
+    public void setDepositExcludedAmount(BigDecimal depositExcludedAmount) {
+        this.depositExcludedAmount = depositExcludedAmount;
+    }
+
+    public BigDecimal getOnlineCollectedAmount() {
+        return onlineCollectedAmount;
+    }
+
+    public void setOnlineCollectedAmount(BigDecimal onlineCollectedAmount) {
+        this.onlineCollectedAmount = onlineCollectedAmount;
+    }
+
+    public BigDecimal getOfflineCollectedAmount() {
+        return offlineCollectedAmount;
+    }
+
+    public void setOfflineCollectedAmount(BigDecimal offlineCollectedAmount) {
+        this.offlineCollectedAmount = offlineCollectedAmount;
+    }
+
+    public BigDecimal getPartnerReceivableAmount() {
+        return partnerReceivableAmount;
+    }
+
+    public void setPartnerReceivableAmount(BigDecimal partnerReceivableAmount) {
+        this.partnerReceivableAmount = partnerReceivableAmount;
     }
 
     public CommissionStatus getStatus() {

@@ -151,9 +151,15 @@ class Phase5AcceptanceAuditIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(0));
 
-        // Adjacent boundary [day4, day6] is free (strict half-open overlap)
+        // Turnaround buffer (60m default) blocks immediate [day4, day6], while day4+60m is free
         mockMvc.perform(get("/api/v1/vehicles")
                         .param("startTime", day4.toString())
+                        .param("endTime", day6.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0));
+
+        mockMvc.perform(get("/api/v1/vehicles")
+                        .param("startTime", day4.plus(60, ChronoUnit.MINUTES).toString())
                         .param("endTime", day6.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(1))

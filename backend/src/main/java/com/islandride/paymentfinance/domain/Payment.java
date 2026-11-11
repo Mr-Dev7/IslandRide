@@ -31,6 +31,9 @@ public class Payment extends BaseEntity {
     @Column(name = "payment_type", nullable = false, length = 30)
     private PaymentType paymentType = PaymentType.RENTAL_ADVANCE;
 
+    @Column(name = "is_deposit", nullable = false)
+    private boolean deposit = false;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_method", nullable = false, length = 30)
     private PaymentMethod paymentMethod = PaymentMethod.GATEWAY;
@@ -47,9 +50,21 @@ public class Payment extends BaseEntity {
     @Column(name = "gateway_signature")
     private String gatewaySignature;
 
+    @Column(name = "gateway_order_expires_at")
+    private Instant gatewayOrderExpiresAt;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
     private PaymentStatus status = PaymentStatus.INITIATED;
+
+    @Column(name = "captured_at")
+    private Instant capturedAt;
+
+    @Column(name = "failed_at")
+    private Instant failedAt;
+
+    @Column(name = "failure_reason", length = 255)
+    private String failureReason;
 
     @Column(name = "idempotency_key", nullable = false, unique = true, length = 128)
     private String idempotencyKey;
@@ -160,6 +175,46 @@ public class Payment extends BaseEntity {
 
     public void setGatewaySignature(String gatewaySignature) {
         this.gatewaySignature = gatewaySignature;
+    }
+
+    public boolean isDeposit() {
+        return deposit;
+    }
+
+    public void setDeposit(boolean deposit) {
+        this.deposit = deposit;
+    }
+
+    public Instant getGatewayOrderExpiresAt() {
+        return gatewayOrderExpiresAt;
+    }
+
+    public void setGatewayOrderExpiresAt(Instant gatewayOrderExpiresAt) {
+        this.gatewayOrderExpiresAt = gatewayOrderExpiresAt;
+    }
+
+    public Instant getCapturedAt() {
+        return capturedAt;
+    }
+
+    public void setCapturedAt(Instant capturedAt) {
+        this.capturedAt = capturedAt;
+    }
+
+    public Instant getFailedAt() {
+        return failedAt;
+    }
+
+    public void setFailedAt(Instant failedAt) {
+        this.failedAt = failedAt;
+    }
+
+    public String getFailureReason() {
+        return failureReason;
+    }
+
+    public void setFailureReason(String failureReason) {
+        this.failureReason = failureReason;
     }
 
     public PaymentStatus getStatus() {

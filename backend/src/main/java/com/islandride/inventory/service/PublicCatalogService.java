@@ -1,10 +1,9 @@
 package com.islandride.inventory.service;
 
-import com.islandride.availability.domain.HoldStatus;
-import com.islandride.availability.domain.InventoryHold;
+import com.islandride.availability.repository.InventoryHoldRepository;
 import com.islandride.availability.service.AvailabilityService;
-import com.islandride.booking.domain.Booking;
 import com.islandride.booking.domain.BookingStatus;
+import com.islandride.booking.repository.BookingRepository;
 import com.islandride.core.dto.PageResponse;
 import com.islandride.core.exception.BusinessRuleException;
 import com.islandride.core.exception.ResourceNotFoundException;
@@ -32,26 +31,29 @@ import java.util.*;
 @Service
 public class PublicCatalogService {
 
-    private static final List<BookingStatus> NON_BLOCKING_BOOKINGS = List.of(
-            BookingStatus.PAYMENT_FAILED,
-            BookingStatus.REJECTED,
-            BookingStatus.CANCELLED,
-            BookingStatus.COMPLETED
-    );
+    private static final List<String> NON_BLOCKING_BOOKING_NAMES = BookingStatus.NON_BLOCKING_STATUSES.stream()
+            .map(Enum::name)
+            .toList();
 
     private final VehicleRepository vehicleRepository;
     private final VehicleImageRepository imageRepository;
     private final VehiclePricingService pricingService;
     private final VehicleMapperSupport mapperSupport;
+    private final BookingRepository bookingRepository;
+    private final InventoryHoldRepository holdRepository;
 
     public PublicCatalogService(VehicleRepository vehicleRepository,
                                 VehicleImageRepository imageRepository,
                                 VehiclePricingService pricingService,
-                                VehicleMapperSupport mapperSupport) {
+                                VehicleMapperSupport mapperSupport,
+                                BookingRepository bookingRepository,
+                                InventoryHoldRepository holdRepository) {
         this.vehicleRepository = vehicleRepository;
         this.imageRepository = imageRepository;
         this.pricingService = pricingService;
         this.mapperSupport = mapperSupport;
+        this.bookingRepository = bookingRepository;
+        this.holdRepository = holdRepository;
     }
 
     @Transactional(readOnly = true)
@@ -90,6 +92,16 @@ public class PublicCatalogService {
         PageRequest pageable = PageRequest.of(Math.max(0, page), Math.min(Math.max(1, size), 50), sort);
 
         Instant now = Instant.now();
+        Set<Long> bufferedConflictIds = new HashSet<>();
+        if (startTime != null) {
+            bufferedConflictIds.addAll(
+                    bookingRepository.findConflictingVehicleIdsWithBuffer(startTime, endTime, NON_BLOCKING_BOOKING_NAMES)
+            );
+            bufferedConflictIds.addAll(
+                    holdRepository.findConflictingHoldVehicleIdsWithBuffer(startTime, endTime, now)
+            );
+        }
+
         Specification<Vehicle> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.isNull(root.get("deletedAt")));
@@ -159,26 +171,9 @@ public class PublicCatalogService {
                 );
                 predicates.add(cb.not(cb.exists(blockSub)));
 
-                Subquery<Long> holdSub = query.subquery(Long.class);
-                Root<InventoryHold> holdRoot = holdSub.from(InventoryHold.class);
-                holdSub.select(cb.literal(1L)).where(
-                        cb.equal(holdRoot.get("vehicle").get("id"), root.get("id")),
-                        cb.equal(holdRoot.get("status"), HoldStatus.HELD),
-                        cb.greaterThan(holdRoot.get("expiresAt"), now),
-                        cb.lessThan(holdRoot.get("startTime"), endTime),
-                        cb.greaterThan(holdRoot.get("endTime"), startTime)
-                );
-                predicates.add(cb.not(cb.exists(holdSub)));
-
-                Subquery<Long> bookingSub = query.subquery(Long.class);
-                Root<Booking> bookingRoot = bookingSub.from(Booking.class);
-                bookingSub.select(cb.literal(1L)).where(
-                        cb.equal(bookingRoot.get("vehicle").get("id"), root.get("id")),
-                        cb.not(bookingRoot.get("status").in(NON_BLOCKING_BOOKINGS)),
-                        cb.lessThan(bookingRoot.get("startTime"), endTime),
-                        cb.greaterThan(bookingRoot.get("endTime"), startTime)
-                );
-                predicates.add(cb.not(cb.exists(bookingSub)));
+                if (!bufferedConflictIds.isEmpty()) {
+                    predicates.add(cb.not(root.get("id").in(bufferedConflictIds)));
+                }
             }
 
             return cb.and(predicates.toArray(Predicate[]::new));

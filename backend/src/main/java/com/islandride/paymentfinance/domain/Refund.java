@@ -32,6 +32,13 @@ public class Refund extends BaseEntity {
     @Column(name = "reason", nullable = false, length = 100)
     private String reason = "CANCELLATION";
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "refund_type", nullable = false, length = 30)
+    private RefundType refundType = RefundType.RENTAL;
+
+    @Column(name = "gateway_fee_retained", nullable = false, precision = 10, scale = 2)
+    private BigDecimal gatewayFeeRetained = BigDecimal.ZERO;
+
     @Column(name = "gateway_refund_id", length = 100)
     private String gatewayRefundId;
 
@@ -42,11 +49,30 @@ public class Refund extends BaseEntity {
     @Column(name = "retry_count", nullable = false)
     private int retryCount = 0;
 
+    @Column(name = "next_retry_at")
+    private Instant nextRetryAt;
+
     @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
 
+    @Column(name = "initiated_by")
+    private Long initiatedBy;
+
+    @Column(name = "approved_by")
+    private Long approvedBy;
+
+    @Column(name = "approved_at")
+    private Instant approvedAt;
+
+    @Column(name = "escalation_ticket_ref", length = 64)
+    private String escalationTicketRef;
+
     @Column(name = "idempotency_key", nullable = false, unique = true, length = 128)
     private String idempotencyKey;
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version = 0L;
 
     @Column(name = "reconciled_at")
     private Instant reconciledAt;
@@ -158,6 +184,70 @@ public class Refund extends BaseEntity {
 
     public void setIdempotencyKey(String idempotencyKey) {
         this.idempotencyKey = idempotencyKey;
+    }
+
+    public RefundType getRefundType() {
+        return refundType;
+    }
+
+    public void setRefundType(RefundType refundType) {
+        this.refundType = refundType;
+    }
+
+    public BigDecimal getGatewayFeeRetained() {
+        return gatewayFeeRetained;
+    }
+
+    public void setGatewayFeeRetained(BigDecimal gatewayFeeRetained) {
+        this.gatewayFeeRetained = gatewayFeeRetained;
+    }
+
+    public Instant getNextRetryAt() {
+        return nextRetryAt;
+    }
+
+    public void setNextRetryAt(Instant nextRetryAt) {
+        this.nextRetryAt = nextRetryAt;
+    }
+
+    public Long getInitiatedBy() {
+        return initiatedBy;
+    }
+
+    public void setInitiatedBy(Long initiatedBy) {
+        this.initiatedBy = initiatedBy;
+    }
+
+    public Long getApprovedBy() {
+        return approvedBy;
+    }
+
+    public void setApprovedBy(Long approvedBy) {
+        this.approvedBy = approvedBy;
+    }
+
+    public Instant getApprovedAt() {
+        return approvedAt;
+    }
+
+    public void setApprovedAt(Instant approvedAt) {
+        this.approvedAt = approvedAt;
+    }
+
+    public String getEscalationTicketRef() {
+        return escalationTicketRef;
+    }
+
+    public void setEscalationTicketRef(String escalationTicketRef) {
+        this.escalationTicketRef = escalationTicketRef;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
     }
 
     public Instant getReconciledAt() {

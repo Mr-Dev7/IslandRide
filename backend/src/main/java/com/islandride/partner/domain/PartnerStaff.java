@@ -24,6 +24,15 @@ public class PartnerStaff extends BaseEntity {
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
 
+    @Column(name = "can_record_handover", nullable = false)
+    private boolean canRecordHandover = false;
+
+    @Column(name = "can_collect_offline_payments", nullable = false)
+    private boolean canCollectOfflinePayments = false;
+
+    @Column(name = "can_mark_no_show", nullable = false)
+    private boolean canMarkNoShow = false;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
@@ -60,6 +69,30 @@ public class PartnerStaff extends BaseEntity {
 
     public void setActive(boolean active) {
         this.active = active;
+    }
+
+    public boolean isCanRecordHandover() {
+        return canRecordHandover;
+    }
+
+    public void setCanRecordHandover(boolean canRecordHandover) {
+        this.canRecordHandover = canRecordHandover;
+    }
+
+    public boolean isCanCollectOfflinePayments() {
+        return canCollectOfflinePayments;
+    }
+
+    public void setCanCollectOfflinePayments(boolean canCollectOfflinePayments) {
+        this.canCollectOfflinePayments = canCollectOfflinePayments;
+    }
+
+    public boolean isCanMarkNoShow() {
+        return canMarkNoShow;
+    }
+
+    public void setCanMarkNoShow(boolean canMarkNoShow) {
+        this.canMarkNoShow = canMarkNoShow;
     }
 
     public Instant getCreatedAt() {

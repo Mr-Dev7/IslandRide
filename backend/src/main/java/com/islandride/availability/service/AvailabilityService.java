@@ -24,6 +24,7 @@ import com.islandride.inventory.repository.VehicleRepository;
 import com.islandride.inventory.repository.VehicleUnavailabilityRepository;
 import com.islandride.partner.domain.Business;
 import com.islandride.partner.domain.VerificationStatus;
+import com.islandride.pricing.service.BookingPolicyService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,7 +32,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -42,19 +42,13 @@ public class AvailabilityService {
     private static final int DEFAULT_CALENDAR_DAYS = 30;
     private static final int MAX_CALENDAR_WINDOW_DAYS = 180;
 
-    private static final Set<BookingStatus> NON_BLOCKING_BOOKING_STATUSES = EnumSet.of(
-            BookingStatus.PAYMENT_FAILED,
-            BookingStatus.REJECTED,
-            BookingStatus.CANCELLED,
-            BookingStatus.COMPLETED
-    );
+    private static final Set<BookingStatus> NON_BLOCKING_BOOKING_STATUSES = BookingStatus.NON_BLOCKING_STATUSES;
 
-    private static final Set<BookingStatus> ARCHIVAL_EXCLUDED_BOOKING_STATUSES = EnumSet.of(
-            BookingStatus.PAYMENT_FAILED,
-            BookingStatus.REJECTED,
-            BookingStatus.CANCELLED,
-            BookingStatus.COMPLETED
-    );
+    private static final List<String> NON_BLOCKING_BOOKING_STATUS_NAMES = BookingStatus.NON_BLOCKING_STATUSES.stream()
+            .map(Enum::name)
+            .toList();
+
+    private static final Set<BookingStatus> ARCHIVAL_EXCLUDED_BOOKING_STATUSES = BookingStatus.NON_BLOCKING_STATUSES;
 
     private final VehicleRepository vehicleRepository;
     private final VehicleUnavailabilityRepository unavailabilityRepository;
@@ -62,19 +56,22 @@ public class AvailabilityService {
     private final BookingRepository bookingRepository;
     private final TenantSecurityService tenantSecurityService;
     private final AuditLogService auditLogService;
+    private final BookingPolicyService bookingPolicyService;
 
     public AvailabilityService(VehicleRepository vehicleRepository,
                                VehicleUnavailabilityRepository unavailabilityRepository,
                                InventoryHoldRepository holdRepository,
                                BookingRepository bookingRepository,
                                TenantSecurityService tenantSecurityService,
-                               AuditLogService auditLogService) {
+                               AuditLogService auditLogService,
+                               BookingPolicyService bookingPolicyService) {
         this.vehicleRepository = vehicleRepository;
         this.unavailabilityRepository = unavailabilityRepository;
         this.holdRepository = holdRepository;
         this.bookingRepository = bookingRepository;
         this.tenantSecurityService = tenantSecurityService;
         this.auditLogService = auditLogService;
+        this.bookingPolicyService = bookingPolicyService;
     }
 
     @Transactional(readOnly = true)
@@ -115,8 +112,11 @@ public class AvailabilityService {
     @Transactional(readOnly = true)
     public boolean isVehicleAvailable(Long vehicleId, Instant startTime, Instant endTime) {
         validateWindow(startTime, endTime);
+        Vehicle vehicle = vehicleRepository.findById(vehicleId)
+                .orElseThrow(() -> new ResourceNotFoundException("Vehicle not found: " + vehicleId));
         Instant now = Instant.now();
-        return findFirstConflictReason(vehicleId, startTime, endTime, now) == null;
+        int bufferMinutes = bookingPolicyService.resolvePolicy(vehicle.getBusiness().getId()).turnaroundBufferMinutes();
+        return findBufferedConflictReason(vehicleId, startTime, endTime, bufferMinutes, now) == null;
     }
 
     @Transactional(readOnly = true)
@@ -240,7 +240,13 @@ public class AvailabilityService {
         }
         publicSlots.sort(Comparator.comparing(PublicAvailabilitySlotDto::startTime));
 
-        String conflictReason = findFirstConflictReason(overlappingBlocks, overlappingHolds, overlappingBookings);
+        String conflictReason = findBufferedConflictReason(
+                vehicle.getId(),
+                windowStart,
+                windowEnd,
+                bookingPolicyService.resolvePolicy(vehicle.getBusiness().getId()).turnaroundBufferMinutes(),
+                now
+        );
         boolean availableForRequestedWindow = conflictReason == null && vehicle.getStatus() == VehicleStatus.ACTIVE;
 
         List<AvailabilityBlockDto> details = includeDetailedBlocks
@@ -265,17 +271,36 @@ public class AvailabilityService {
                 vehicleId, startTime, endTime, HoldStatus.HELD, now);
         List<Booking> bookings = bookingRepository.findOverlappingBookings(
                 vehicleId, startTime, endTime, NON_BLOCKING_BOOKING_STATUSES);
-        return findFirstConflictReason(blocks, holds, bookings);
+        return findFirstConflictReason(blocks, holds, bookings, 0);
+    }
+
+    private String findBufferedConflictReason(Long vehicleId,
+                                             Instant startTime,
+                                             Instant endTime,
+                                             int bufferMinutes,
+                                             Instant now) {
+        List<VehicleUnavailability> blocks = unavailabilityRepository.findOverlappingBlocks(
+                vehicleId, startTime, endTime, AvailabilityBlockStatus.ACTIVE);
+        List<InventoryHold> holds = holdRepository.findActiveOverlappingHoldsWithBuffer(
+                vehicleId, startTime, endTime, bufferMinutes, now);
+        List<Booking> bookings = bookingRepository.findOverlappingBookingsWithBuffer(
+                vehicleId, startTime, endTime, bufferMinutes, NON_BLOCKING_BOOKING_STATUS_NAMES);
+        return findFirstConflictReason(blocks, holds, bookings, bufferMinutes);
     }
 
     private static String findFirstConflictReason(List<VehicleUnavailability> blocks,
                                                   List<InventoryHold> holds,
-                                                  List<Booking> bookings) {
+                                                  List<Booking> bookings,
+                                                  int bufferMinutes) {
         if (!bookings.isEmpty()) {
-            return "Vehicle already has an overlapping booking during the requested timeframe.";
+            return bufferMinutes > 0
+                    ? "Vehicle already has an overlapping booking or falls within the " + bufferMinutes + "-minute turnaround buffer."
+                    : "Vehicle already has an overlapping booking during the requested timeframe.";
         }
         if (!holds.isEmpty()) {
-            return "Vehicle has an active temporary inventory hold during the requested timeframe.";
+            return bufferMinutes > 0
+                    ? "Vehicle has an active temporary inventory hold or falls within its turnaround buffer."
+                    : "Vehicle has an active temporary inventory hold during the requested timeframe.";
         }
         if (!blocks.isEmpty()) {
             return "Vehicle already has an overlapping availability or maintenance block during the requested timeframe.";

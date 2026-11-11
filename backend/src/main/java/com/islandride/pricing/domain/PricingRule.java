@@ -40,6 +40,15 @@ public class PricingRule extends BaseEntity {
     @Column(name = "adjustment_value", nullable = false, precision = 10, scale = 2)
     private BigDecimal adjustmentValue;
 
+    @Column(name = "priority", nullable = false)
+    private int priority = 100;
+
+    @Column(name = "is_stackable", nullable = false)
+    private boolean stackable = true;
+
+    @Column(name = "exclusive_group", length = 50)
+    private String exclusiveGroup;
+
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
 
@@ -111,6 +120,30 @@ public class PricingRule extends BaseEntity {
 
     public void setAdjustmentValue(BigDecimal adjustmentValue) {
         this.adjustmentValue = adjustmentValue;
+    }
+
+    public int getPriority() {
+        return priority;
+    }
+
+    public void setPriority(int priority) {
+        this.priority = priority;
+    }
+
+    public boolean isStackable() {
+        return stackable;
+    }
+
+    public void setStackable(boolean stackable) {
+        this.stackable = stackable;
+    }
+
+    public String getExclusiveGroup() {
+        return exclusiveGroup;
+    }
+
+    public void setExclusiveGroup(String exclusiveGroup) {
+        this.exclusiveGroup = exclusiveGroup;
     }
 
     public boolean isActive() {

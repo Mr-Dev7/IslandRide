@@ -38,5 +38,33 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             @Param("endTime") Instant endTime,
             @Param("excludedStatuses") Collection<BookingStatus> excludedStatuses
     );
+
+    @Query(value = """
+            SELECT b.* FROM bookings b
+            WHERE b.vehicle_id = :vehicleId
+              AND b.status NOT IN (:excludedStatuses)
+              AND b.start_time < DATE_ADD(:endTime, INTERVAL :requestBufferMinutes MINUTE)
+              AND DATE_ADD(b.end_time, INTERVAL b.turnaround_buffer_minutes MINUTE) > :startTime
+            """, nativeQuery = true)
+    List<Booking> findOverlappingBookingsWithBuffer(
+            @Param("vehicleId") Long vehicleId,
+            @Param("startTime") Instant startTime,
+            @Param("endTime") Instant endTime,
+            @Param("requestBufferMinutes") int requestBufferMinutes,
+            @Param("excludedStatuses") Collection<String> excludedStatuses
+    );
+
+    @Query(value = """
+            SELECT DISTINCT b.vehicle_id FROM bookings b
+            LEFT JOIN partner_policies pp ON pp.business_id = b.business_id
+            WHERE b.status NOT IN (:excludedStatuses)
+              AND b.start_time < DATE_ADD(:endTime, INTERVAL COALESCE(pp.turnaround_buffer_minutes, 60) MINUTE)
+              AND DATE_ADD(b.end_time, INTERVAL b.turnaround_buffer_minutes MINUTE) > :startTime
+            """, nativeQuery = true)
+    List<Long> findConflictingVehicleIdsWithBuffer(
+            @Param("startTime") Instant startTime,
+            @Param("endTime") Instant endTime,
+            @Param("excludedStatuses") Collection<String> excludedStatuses
+    );
 }
 
