@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -60,6 +61,7 @@ public class VehiclePricingService {
     public VehiclePricingOverviewDto buildOverview(Vehicle vehicle) {
         BigDecimal gstPercentage = getPlatformGstPercentage();
         String defaultCurrency = getPlatformCurrency();
+        Instant now = Instant.now();
 
         List<VehiclePricingPlanDto> history = pricingPlanRepository
                 .findByVehicleIdOrderByActiveDescCreatedAtDesc(vehicle.getId())
@@ -68,7 +70,7 @@ public class VehiclePricingService {
                 .toList();
 
         VehiclePricingPlanDto activePlan = history.stream()
-                .filter(VehiclePricingPlanDto::active)
+                .filter(p -> p.active() && isEffectiveAt(p, now))
                 .findFirst()
                 .orElseGet(() -> synthesizeFallbackPlan(vehicle, defaultCurrency, gstPercentage));
 
@@ -94,21 +96,30 @@ public class VehiclePricingService {
             throw new BusinessRuleException("Pricing validity start timestamp must be strictly before the validity end timestamp.");
         }
 
+        Instant now = Instant.now();
+        boolean activatePlan = request.active() == null || request.active();
+        if (activatePlan && request.validTo() != null && !request.validTo().isAfter(now)) {
+            throw new BusinessRuleException("Active pricing plan validity end timestamp must be in the future.");
+        }
+        boolean effectiveNow = activatePlan && (request.validFrom() == null || !request.validFrom().isAfter(now));
+
         String defaultCurrency = getPlatformCurrency();
         String currency = (request.currency() != null && !request.currency().isBlank())
                 ? request.currency().trim().toUpperCase(Locale.ROOT)
                 : defaultCurrency;
-        boolean activatePlan = request.active() == null || request.active();
 
         BigDecimal previousDailyRate = vehicle.getDailyRate();
         BigDecimal previousDeposit = vehicle.getSecurityDeposit();
 
-        if (activatePlan) {
+        if (effectiveNow) {
             List<VehiclePricingPlan> existingActive = pricingPlanRepository.findByVehicleIdAndActiveTrue(vehicle.getId());
-            for (VehiclePricingPlan plan : existingActive) {
+            List<VehiclePricingPlan> toDeactivate = existingActive.stream()
+                    .filter(p -> p.getValidFrom() == null || !p.getValidFrom().isAfter(now))
+                    .toList();
+            for (VehiclePricingPlan plan : toDeactivate) {
                 plan.setActive(false);
             }
-            pricingPlanRepository.saveAll(existingActive);
+            pricingPlanRepository.saveAll(toDeactivate);
         }
 
         VehiclePricingPlan plan = new VehiclePricingPlan();
@@ -135,7 +146,7 @@ public class VehiclePricingService {
 
         VehiclePricingPlan saved = pricingPlanRepository.save(plan);
 
-        if (activatePlan) {
+        if (effectiveNow) {
             vehicle.setDailyRate(saved.getDailyRate());
             vehicle.setSecurityDeposit(saved.getSecurityDeposit());
             vehicleRepository.save(vehicle);
@@ -280,6 +291,11 @@ public class VehiclePricingService {
                 rule.getAdjustmentValue(),
                 rule.isActive()
         );
+    }
+
+    private static boolean isEffectiveAt(VehiclePricingPlanDto plan, Instant now) {
+        return (plan.validFrom() == null || !plan.validFrom().isAfter(now))
+                && (plan.validTo() == null || plan.validTo().isAfter(now));
     }
 
     private VehiclePricingPlanDto synthesizeFallbackPlan(Vehicle v, String currency, BigDecimal gstPercentage) {

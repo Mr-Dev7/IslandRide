@@ -238,7 +238,12 @@ public class PartnerVehicleService {
 
         applyFields(vehicle, req, island, category, pickup, drop, allowDiffReturn, normalizedReg);
 
-        pricingPlanRepository.findFirstByVehicleIdAndActiveTrueOrderByUpdatedAtDesc(vehicle.getId())
+        Instant now = Instant.now();
+        pricingPlanRepository.findByVehicleIdOrderByActiveDescCreatedAtDesc(vehicle.getId()).stream()
+                .filter(p -> p.isActive()
+                        && (p.getValidFrom() == null || !p.getValidFrom().isAfter(now))
+                        && (p.getValidTo() == null || p.getValidTo().isAfter(now)))
+                .findFirst()
                 .ifPresent(activePlan -> {
                     activePlan.setDailyRate(vehicle.getDailyRate());
                     activePlan.setSecurityDeposit(vehicle.getSecurityDeposit());

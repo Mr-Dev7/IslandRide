@@ -304,6 +304,25 @@ describe('Partner Fleet Portal Components', () => {
     fixture.componentInstance.onIslandChange();
     httpMock.expectOne('/api/v1/locations/hubs?islandId=2').flush([]);
     expect(fixture.componentInstance.form.pickupLocationPublicId).toBe('');
+
+    fixture.componentInstance.form.categoryId = 1;
+    fixture.componentInstance.form.title = 'Invalid Rate Bike';
+    fixture.componentInstance.form.make = 'Honda';
+    fixture.componentInstance.form.model = 'Activa';
+    fixture.componentInstance.form.registrationNumber = 'AN01XX1111';
+    fixture.componentInstance.form.dailyRate = 0;
+    fixture.componentInstance.save();
+
+    const createReq = httpMock.expectOne('/api/v1/partners/vehicles');
+    createReq.flush(
+      {
+        status: 400,
+        detail: 'One or more fields in the request body failed validation constraints.',
+        invalidParams: [{ name: 'dailyRate', reason: 'Daily rate must be at least 1.00' }],
+      },
+      { status: 400, statusText: 'Bad Request' }
+    );
+    expect(fixture.componentInstance.error()).toContain('dailyRate: Daily rate must be at least 1.00');
   });
 });
 

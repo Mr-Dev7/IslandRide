@@ -408,7 +408,13 @@ export class PartnerVehicleFormComponent implements OnInit {
       },
       error: (err) => {
         this.saving.set(false);
-        const fieldErrors = err?.error?.errors ? Object.values(err.error.errors).join('; ') : '';
+        const params = err?.error?.invalidParams;
+        const fieldErrors = Array.isArray(params)
+          ? params
+              .map((p: { name?: string; reason?: string }) => (p.name ? `${p.name}: ${p.reason}` : p.reason))
+              .filter(Boolean)
+              .join('; ')
+          : '';
         this.error.set(fieldErrors || err?.error?.detail || 'Failed to save vehicle.');
       },
     });

@@ -107,13 +107,14 @@ class VehicleMediaAndAvailabilityIntegrationTest {
                         .content(InventoryTestSupport.JSON.writeValueAsString(invalidDates)))
                 .andExpect(status().is(422));
 
-        // Valid pricing save -> syncs currency INR & GST 5.00
+        // Valid pricing save (currently effective window) -> syncs currency INR & GST 5.00
+        Instant effectiveFrom = Instant.now().minus(1, ChronoUnit.DAYS);
         SaveVehiclePricingRequest validReq = new SaveVehiclePricingRequest(
                 "INR", new BigDecimal("350.00"), new BigDecimal("2150.00"), new BigDecimal("12900.00"),
                 new BigDecimal("4000.00"), 6, 14, 150,
                 new BigDecimal("18.00"), new BigDecimal("350.00"), new BigDecimal("150.00"), new BigDecimal("200.00"),
                 "Beach sand excessive cleaning extra", new BigDecimal("400.00"), new BigDecimal("500.00"), 30,
-                t0, t1, true
+                effectiveFrom, t1, true
         );
         mockMvc.perform(put("/api/v1/partners/vehicles/" + vehicle.getPublicId() + "/pricing").with(csrf())
                         .header("Authorization", token)
