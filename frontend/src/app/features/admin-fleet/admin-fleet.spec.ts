@@ -507,6 +507,56 @@ describe('AdminBookingsComponent Operations & Disruption Governance', () => {
     fixture.detectChanges();
     expect(fixture.componentInstance.alert()?.message).toContain('Expired 3 bookings');
   });
+
+  it('should execute dispute resolution through admin modal', () => {
+    const httpMock = TestBed.inject(HttpTestingController);
+    const fixture = TestBed.createComponent(AdminBookingsComponent);
+    fixture.detectChanges();
+
+    httpMock.expectOne((r) => r.url === '/api/v1/admin/bookings').flush({
+      content: [buildAdminBooking('bkg_disp_1', 'DISPUTED')],
+      page: 0,
+      size: 50,
+      totalElements: 1,
+      totalPages: 1,
+      first: true,
+      last: true,
+    });
+    httpMock.expectOne('/api/v1/admin/overbooking-exceptions').flush([]);
+    fixture.detectChanges();
+
+    fixture.componentInstance.openDisputeModal(buildAdminBooking('bkg_disp_1', 'DISPUTED'));
+    expect(fixture.componentInstance.showDisputeModal()).toBeTrue();
+
+    fixture.componentInstance.disputeForm.targetStatus = 'COMPLETED';
+    fixture.componentInstance.disputeForm.resolutionNotes = 'Arbitrated in favor of rental partner';
+    fixture.componentInstance.disputeForm.refundAmount = 200;
+    fixture.componentInstance.disputeForm.depositForfeitAmount = 500;
+
+    fixture.componentInstance.executeDisputeResolution();
+    const dispReq = httpMock.expectOne('/api/v1/admin/bookings/bkg_disp_1/dispute/resolve');
+    expect(dispReq.request.body).toEqual({
+      targetStatus: 'COMPLETED',
+      resolutionNotes: 'Arbitrated in favor of rental partner',
+      refundAmount: 200,
+      depositForfeitAmount: 500,
+    });
+    dispReq.flush(buildAdminBookingDetail('bkg_disp_1', 'COMPLETED'));
+
+    httpMock.expectOne((r) => r.url === '/api/v1/admin/bookings').flush({
+      content: [buildAdminBooking('bkg_disp_1', 'COMPLETED')],
+      page: 0,
+      size: 50,
+      totalElements: 1,
+      totalPages: 1,
+      first: true,
+      last: true,
+    });
+
+    fixture.detectChanges();
+    expect(fixture.componentInstance.showDisputeModal()).toBeFalse();
+    expect(fixture.componentInstance.alert()?.message).toContain('Dispute resolved successfully');
+  });
 });
 
 describe('AdminFinanceComponent Trust Ledger & Refund Governance', () => {

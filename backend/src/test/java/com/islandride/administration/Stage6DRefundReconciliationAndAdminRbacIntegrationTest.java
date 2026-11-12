@@ -132,11 +132,17 @@ class Stage6DRefundReconciliationAndAdminRbacIntegrationTest {
     @Autowired
     private AdminFinanceOverviewService adminFinanceOverviewService;
 
+    @Autowired
+    private com.islandride.booking.service.BookingOrchestrationService bookingOrchestrationService;
+
     @Autowired(required = false)
     private RefundRetryScheduler refundRetryScheduler;
 
     @Autowired(required = false)
     private PaymentReconciliationScheduler paymentReconciliationScheduler;
+
+    @Autowired(required = false)
+    private com.islandride.booking.service.BookingExpirationScheduler bookingExpirationScheduler;
 
     @Autowired
     private JwtTokenProvider jwtTokenProvider;
@@ -245,6 +251,27 @@ class Stage6DRefundReconciliationAndAdminRbacIntegrationTest {
                         .with(csrf())
                         .header("Authorization", "Bearer " + opsToken))
                 .andExpect(status().isForbidden());
+
+        // 7. Can resolve booking disputes (200 OK)
+        Booking disputeBooking = createSampleBooking(BookingStatus.DISPUTED);
+        BookingDtos.DisputeResolveRequest disputeReq = new BookingDtos.DisputeResolveRequest(
+                BookingStatus.COMPLETED,
+                "Settled after ops review",
+                new BigDecimal("500.00"),
+                BigDecimal.ZERO
+        );
+        mockMvc.perform(post("/api/v1/admin/bookings/" + disputeBooking.getPublicId() + "/dispute/resolve")
+                        .with(csrf())
+                        .header("Authorization", "Bearer " + opsToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(disputeReq)))
+                .andExpect(status().isOk());
+
+        // 8. FORBIDDEN from refund retries (403)
+        mockMvc.perform(post("/api/v1/admin/finance/refunds/ref_nonexistent/retry")
+                        .with(csrf())
+                        .header("Authorization", "Bearer " + opsToken))
+                .andExpect(status().isForbidden());
     }
 
     // -------------------------------------------------------------------------
@@ -306,6 +333,26 @@ class Stage6DRefundReconciliationAndAdminRbacIntegrationTest {
 
         // 6. FORBIDDEN from booking expiration sweep (403)
         mockMvc.perform(post("/api/v1/admin/bookings/expire-sweep")
+                        .with(csrf())
+                        .header("Authorization", "Bearer " + finToken))
+                .andExpect(status().isForbidden());
+
+        // 7. FORBIDDEN from dispute resolution (403)
+        BookingDtos.DisputeResolveRequest disputeReq = new BookingDtos.DisputeResolveRequest(
+                BookingStatus.COMPLETED,
+                "Unauthorized finance dispute settlement attempt",
+                BigDecimal.ZERO,
+                BigDecimal.ZERO
+        );
+        mockMvc.perform(post("/api/v1/admin/bookings/" + booking.getPublicId() + "/dispute/resolve")
+                        .with(csrf())
+                        .header("Authorization", "Bearer " + finToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(disputeReq)))
+                .andExpect(status().isForbidden());
+
+        // 8. FORBIDDEN from approving vehicle listing (403)
+        mockMvc.perform(post("/api/v1/admin/vehicles/veh_dummy/approve")
                         .with(csrf())
                         .header("Authorization", "Bearer " + finToken))
                 .andExpect(status().isForbidden());
@@ -373,41 +420,112 @@ class Stage6DRefundReconciliationAndAdminRbacIntegrationTest {
         mockMvc.perform(get("/api/v1/admin/vehicles")
                         .header("Authorization", "Bearer " + supportToken))
                 .andExpect(status().isForbidden());
+
+        // 8. FORBIDDEN from dispute resolution (403)
+        BookingDtos.DisputeResolveRequest disputeReq = new BookingDtos.DisputeResolveRequest(
+                BookingStatus.COMPLETED,
+                "Unauthorized support dispute attempt",
+                BigDecimal.ZERO,
+                BigDecimal.ZERO
+        );
+        mockMvc.perform(post("/api/v1/admin/bookings/" + booking.getPublicId() + "/dispute/resolve")
+                        .with(csrf())
+                        .header("Authorization", "Bearer " + supportToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(disputeReq)))
+                .andExpect(status().isForbidden());
+
+        // 9. FORBIDDEN from payment reconciliation (403)
+        mockMvc.perform(post("/api/v1/admin/finance/reconcile-payments")
+                        .with(csrf())
+                        .header("Authorization", "Bearer " + supportToken))
+                .andExpect(status().isForbidden());
+
+        // 10. FORBIDDEN from booking expiration sweep (403)
+        mockMvc.perform(post("/api/v1/admin/bookings/expire-sweep")
+                        .with(csrf())
+                        .header("Authorization", "Bearer " + supportToken))
+                .andExpect(status().isForbidden());
+
+        // 11. FORBIDDEN from refund retry (403)
+        mockMvc.perform(post("/api/v1/admin/finance/refunds/ref_nonexistent/retry")
+                        .with(csrf())
+                        .header("Authorization", "Bearer " + supportToken))
+                .andExpect(status().isForbidden());
     }
 
     // -------------------------------------------------------------------------
     // 4. RBAC: Non-Admin Personas Blocked Completely
     // -------------------------------------------------------------------------
     @Test
-    @DisplayName("Admin RBAC: TOURIST and PARTNER roles are strictly forbidden from all admin endpoints (403)")
+    @DisplayName("Admin RBAC: TOURIST and all PARTNER roles (OWNER, MANAGER, STAFF) and unauthenticated are strictly forbidden from all admin endpoints")
     void testAdminRbac_TouristAndPartnerBlocked() throws Exception {
         User tourist = createTestUser("tourist_adm_" + randomSuffix() + "@islandride.test", RoleType.ROLE_TOURIST);
         String touristToken = jwtTokenProvider.generateAccessToken(UserPrincipal.create(tourist, null));
 
-        User partner = createTestUser("partner_adm_" + randomSuffix() + "@islandride.test", RoleType.ROLE_PARTNER_OWNER);
-        String partnerToken = jwtTokenProvider.generateAccessToken(UserPrincipal.create(partner, 1L));
+        User partnerOwner = createTestUser("partner_owner_" + randomSuffix() + "@islandride.test", RoleType.ROLE_PARTNER_OWNER);
+        String partnerOwnerToken = jwtTokenProvider.generateAccessToken(UserPrincipal.create(partnerOwner, 1L));
 
-        // Tourist blocked
-        mockMvc.perform(get("/api/v1/admin/bookings")
-                        .header("Authorization", "Bearer " + touristToken))
-                .andExpect(status().isForbidden());
+        User partnerMgr = createTestUser("partner_mgr_" + randomSuffix() + "@islandride.test", RoleType.ROLE_PARTNER_MANAGER);
+        String partnerMgrToken = jwtTokenProvider.generateAccessToken(UserPrincipal.create(partnerMgr, 1L));
 
-        mockMvc.perform(get("/api/v1/admin/finance/overview")
-                        .header("Authorization", "Bearer " + touristToken))
-                .andExpect(status().isForbidden());
+        User partnerStaff = createTestUser("partner_stf_" + randomSuffix() + "@islandride.test", RoleType.ROLE_PARTNER_STAFF);
+        String partnerStaffToken = jwtTokenProvider.generateAccessToken(UserPrincipal.create(partnerStaff, 1L));
 
-        // Partner blocked
-        mockMvc.perform(get("/api/v1/admin/bookings")
-                        .header("Authorization", "Bearer " + partnerToken))
-                .andExpect(status().isForbidden());
-
-        mockMvc.perform(get("/api/v1/admin/finance/overview")
-                        .header("Authorization", "Bearer " + partnerToken))
-                .andExpect(status().isForbidden());
+        for (String token : List.of(touristToken, partnerOwnerToken, partnerMgrToken, partnerStaffToken)) {
+            mockMvc.perform(get("/api/v1/admin/bookings").header("Authorization", "Bearer " + token))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(get("/api/v1/admin/finance/overview").header("Authorization", "Bearer " + token))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(get("/api/v1/admin/vehicles").header("Authorization", "Bearer " + token))
+                    .andExpect(status().isForbidden());
+        }
 
         // Unauthenticated request returns 401
         mockMvc.perform(get("/api/v1/admin/bookings"))
                 .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/admin/finance/overview"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    // -------------------------------------------------------------------------
+    // 4b. RBAC: SUPER_ADMIN Global Authority
+    // -------------------------------------------------------------------------
+    @Test
+    @DisplayName("Admin RBAC: SUPER_ADMIN has global administrative access across operations, disruptions, moderation, and finance")
+    void testAdminRbac_SuperAdminPermissions() throws Exception {
+        User superAdmin = createTestUser("super_rbac_" + randomSuffix() + "@islandride.test", RoleType.ROLE_SUPER_ADMIN);
+        String superToken = jwtTokenProvider.generateAccessToken(UserPrincipal.create(superAdmin, null));
+
+        Booking booking = createSampleBooking(BookingStatus.CONFIRMED);
+        Payment payment = createSamplePayment(booking, new BigDecimal("1000.00"), PaymentStatus.CAPTURED);
+
+        // Can access bookings (200 OK)
+        mockMvc.perform(get("/api/v1/admin/bookings")
+                        .header("Authorization", "Bearer " + superToken))
+                .andExpect(status().isOk());
+
+        // Can access finance overview (200 OK)
+        mockMvc.perform(get("/api/v1/admin/finance/overview")
+                        .header("Authorization", "Bearer " + superToken))
+                .andExpect(status().isOk());
+
+        // Can access vehicle moderation (200 OK)
+        mockMvc.perform(get("/api/v1/admin/vehicles")
+                        .header("Authorization", "Bearer " + superToken))
+                .andExpect(status().isOk());
+
+        // Can trigger booking expiration sweep (200 OK)
+        mockMvc.perform(post("/api/v1/admin/bookings/expire-sweep")
+                        .with(csrf())
+                        .header("Authorization", "Bearer " + superToken))
+                .andExpect(status().isOk());
+
+        // Can trigger payment reconciliation sweep (200 OK)
+        mockMvc.perform(post("/api/v1/admin/finance/reconcile-payments")
+                        .with(csrf())
+                        .header("Authorization", "Bearer " + superToken))
+                .andExpect(status().isOk());
     }
 
     // -------------------------------------------------------------------------
@@ -573,7 +691,7 @@ class Stage6DRefundReconciliationAndAdminRbacIntegrationTest {
     // -------------------------------------------------------------------------
     @Test
     @DisplayName("Manual Refunds: Cannot exceed remaining refundable balance and prevents duplicate executions via idempotency")
-    void testManualRefund_CannotExceedCapturedAmount_AndIsIdempotent() {
+    void testManualRefund_CannotExceedCapturedAmount_AndIsIdempotent() throws Exception {
         User finAdmin = createTestUser("fin_man_" + randomSuffix() + "@islandride.test", RoleType.ROLE_FINANCE_ADMIN);
         Booking booking = createSampleBooking(BookingStatus.CONFIRMED);
         Payment payment = createSamplePayment(booking, new BigDecimal("2000.00"), PaymentStatus.CAPTURED);
@@ -621,6 +739,41 @@ class Stage6DRefundReconciliationAndAdminRbacIntegrationTest {
                 "ref_over_" + randomSuffix()
         )).isInstanceOf(com.islandride.core.exception.BusinessRuleException.class)
                 .hasMessageContaining("exceeds remaining refundable balance");
+
+        // 4. Test manual refund retry endpoint via MockMvc
+        String finToken = jwtTokenProvider.generateAccessToken(UserPrincipal.create(finAdmin, null));
+        mockMvc.perform(post("/api/v1/admin/finance/refunds/" + ref1.publicId() + "/retry?forceMarkReconciled=true")
+                        .with(csrf())
+                        .header("Authorization", "Bearer " + finToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("RECONCILED"));
+    }
+
+    // -------------------------------------------------------------------------
+    // 10. Scheduler: Booking Expiration Sweep
+    // -------------------------------------------------------------------------
+    @Test
+    @DisplayName("Scheduler: BookingExpirationScheduler sweeps expired approvals and payment deadlines deterministically")
+    void testBookingExpirationScheduler_SweepsExpiredApprovalAndPaymentDeadlines() {
+        Booking staleApproval = createSampleBooking(BookingStatus.AWAITING_PARTNER_APPROVAL);
+        staleApproval.setApprovalExpiresAt(Instant.now().minus(Duration.ofMinutes(10)));
+        bookingRepository.save(staleApproval);
+
+        Booking stalePayment = createSampleBooking(BookingStatus.APPROVED);
+        stalePayment.setPaymentDeadlineAt(Instant.now().minus(Duration.ofMinutes(10)));
+        bookingRepository.save(stalePayment);
+
+        com.islandride.booking.service.BookingExpirationScheduler scheduler = bookingExpirationScheduler != null
+                ? bookingExpirationScheduler
+                : new com.islandride.booking.service.BookingExpirationScheduler(bookingOrchestrationService);
+
+        scheduler.runBookingExpirationSweep();
+
+        Booking refreshedApproval = bookingRepository.findById(staleApproval.getId()).orElseThrow();
+        Booking refreshedPayment = bookingRepository.findById(stalePayment.getId()).orElseThrow();
+
+        assertThat(refreshedApproval.getStatus()).isEqualTo(BookingStatus.EXPIRED);
+        assertThat(refreshedPayment.getStatus()).isEqualTo(BookingStatus.EXPIRED);
     }
 
     // -------------------------------------------------------------------------
