@@ -166,6 +166,15 @@ export const routes: Routes = [
             (m) => m.PartnerBookingDetailComponent
           ),
       },
+      {
+        path: 'financials',
+        canActivate: [roleGuard],
+        data: { roles: ['ROLE_PARTNER_OWNER', 'ROLE_PARTNER_MANAGER'] },
+        loadComponent: () =>
+          import('./features/partner-fleet/partner-financials.component').then(
+            (m) => m.PartnerFinancialsComponent
+          ),
+      },
     ],
   },
 

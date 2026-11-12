@@ -58,6 +58,8 @@ public class PaymentGatewayProperties {
         private String keyId = "";
         private String keySecret = "";
         private String webhookSecret = "";
+        private int connectTimeoutSeconds = 10;
+        private int readTimeoutSeconds = 15;
 
         public String getBaseUrl() {
             return baseUrl;
@@ -89,6 +91,22 @@ public class PaymentGatewayProperties {
 
         public void setWebhookSecret(String webhookSecret) {
             this.webhookSecret = webhookSecret;
+        }
+
+        public int getConnectTimeoutSeconds() {
+            return connectTimeoutSeconds;
+        }
+
+        public void setConnectTimeoutSeconds(int connectTimeoutSeconds) {
+            this.connectTimeoutSeconds = connectTimeoutSeconds;
+        }
+
+        public int getReadTimeoutSeconds() {
+            return readTimeoutSeconds;
+        }
+
+        public void setReadTimeoutSeconds(int readTimeoutSeconds) {
+            this.readTimeoutSeconds = readTimeoutSeconds;
         }
     }
 

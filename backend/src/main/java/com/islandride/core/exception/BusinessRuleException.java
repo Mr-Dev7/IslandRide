@@ -13,8 +13,12 @@ public class BusinessRuleException extends RuntimeException {
         this.errorType = errorType;
     }
 
+    public BusinessRuleException(String message, Throwable cause) {
+        super(message, cause);
+        this.errorType = "https://errors.islandride.in/business-rule-violation";
+    }
+
     public String getErrorType() {
         return errorType;
     }
 }
-

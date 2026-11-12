@@ -443,4 +443,46 @@ export interface AdminFinanceOverviewDto {
   overbookingExceptions: OverbookingExceptionDto[];
 }
 
+export interface CommissionDetailDto {
+  commissionId: number;
+  bookingPublicId: string | null;
+  bookingReference: string | null;
+  vehicleTitle: string | null;
+  grossRentalAmount: number;
+  commissionPercentage: number;
+  commissionAmount: number;
+  partnerEarnings: number;
+  status: string;
+  createdAt: string;
+}
+
+export interface SettlementDetailDto {
+  publicId: string;
+  periodStart: string;
+  periodEnd: string;
+  grossAmount: number;
+  commissionDeducted: number;
+  netPayoutAmount: number;
+  bankUtrReference: string | null;
+  status: string;
+  processedAt: string | null;
+  createdAt: string;
+}
+
+export interface PartnerFinancialOverviewDto {
+  businessId: number;
+  tradeName: string;
+  totalGrossBookings: number;
+  totalCommissionDeducted: number;
+  totalNetEarnings: number;
+  onlineCollectedByPlatform: number;
+  offlineCollectedByPartner: number;
+  totalSettledPaidOut: number;
+  pendingSettlementBalance: number;
+  openReceivablesBalance: number;
+  totalCompletedBookings: number;
+  recentCommissions: CommissionDetailDto[];
+  recentSettlements: SettlementDetailDto[];
+}
+
 export type BookingPage = PageResponse<BookingSummaryDto>;

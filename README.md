@@ -101,7 +101,29 @@ To run IslandRide locally, ensure the following tools are installed:
 
 ## 4. Local Setup & Startup Instructions
 
-### Step 1: Clone and Configure Environment Variables
+### Quick Start — One-Command Automated Local Startup (Recommended)
+
+Run the single-command startup script from PowerShell in the repository root:
+
+```powershell
+.\start-islandride.ps1
+```
+
+The startup script handles the full lifecycle automatically:
+1. **Prerequisite Verification**: Validates Docker daemon, Java 25 LTS, Node.js 24 LTS, and npm.
+2. **Infrastructure Boot**: Launches Docker Compose infrastructure (MySQL 8.4 LTS on host port `3307` and Redis 7.4 on `6379`).
+3. **Health Check Polling**: Awaits MySQL and Redis readiness before launching application tiers.
+4. **Collision & Duplicate Process Prevention**: Inspects ports `8080` (Backend) and `4200` (Frontend); if already active, prevents duplicate process launch.
+5. **Interactive Process Windows**: Launches Spring Boot (`mvnw.cmd spring-boot:run`) and Angular (`npm start`) in dedicated PowerShell windows.
+6. **Telemetry & Service Summary**: Polls `/actuator/health` and `http://localhost:4200` and outputs a formatted status table with endpoints and console URLs.
+
+---
+
+### Manual Step-by-Step Startup
+
+If you prefer to start services individually:
+
+#### Step 1: Clone and Configure Environment Variables
 ```powershell
 # Copy the environment template
 Copy-Item .env.example .env
