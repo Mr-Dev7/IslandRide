@@ -12,7 +12,7 @@ import { PartnerFinancialOverviewDto } from '../../core/models/booking.models';
       <div class="header-row">
         <div>
           <h2>Partner Financials & Earnings</h2>
-          <p class="subtitle" *ngIf="overview()">Business: {{ overview()?.tradeName }}</p>
+          <p class="subtitle" *ngIf="overview()">Business: {{ overview()?.tradeName }} | Settlement Cycle: {{ overview()?.settlementCycleDays ?? 7 }}d (Configurable Default) | Auto-Offset: {{ overview()?.autoOffsetReceivables ? 'Active' : 'Disabled' }}</p>
         </div>
         <button class="btn btn-secondary" (click)="loadOverview()" [disabled]="loading()">
           {{ loading() ? 'Refreshing...' : 'Refresh' }}

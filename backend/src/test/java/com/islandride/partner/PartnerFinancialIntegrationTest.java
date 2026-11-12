@@ -109,6 +109,12 @@ class PartnerFinancialIntegrationTest {
     private PartnerReceivableRepository receivableRepository;
 
     @Autowired
+    private com.islandride.administration.repository.SystemSettingRepository systemSettingRepository;
+
+    @Autowired
+    private com.islandride.pricing.service.BookingPolicyService bookingPolicyService;
+
+    @Autowired
     private JwtTokenProvider jwtTokenProvider;
 
     @Autowired
@@ -239,7 +245,9 @@ class PartnerFinancialIntegrationTest {
                 .andExpect(jsonPath("$.recentCommissions", hasSize(1)))
                 .andExpect(jsonPath("$.recentCommissions[0].bookingReference").value("BK-FIN-" + token))
                 .andExpect(jsonPath("$.recentSettlements", hasSize(1)))
-                .andExpect(jsonPath("$.recentSettlements[0].netPayoutAmount").value(1000.00));
+                .andExpect(jsonPath("$.recentSettlements[0].netPayoutAmount").value(1000.00))
+                .andExpect(jsonPath("$.settlementCycleDays").value(7))
+                .andExpect(jsonPath("$.autoOffsetReceivables").value(true));
     }
 
     @Test
@@ -387,6 +395,44 @@ class PartnerFinancialIntegrationTest {
         mockMvc.perform(get("/api/v1/partners/financials/overview")
                         .param("businessId", "999999"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("Role lockdown: Support Agent role strictly forbidden from partner financial overview (403)")
+    void testRoleLockdown_SupportAgentCannotAccessFinancials() throws Exception {
+        String token = UUID.randomUUID().toString().substring(0, 6);
+        User owner = createTestUser("fin_sup_own_" + token + "@islandride.test", RoleType.ROLE_PARTNER_OWNER);
+        Business biz = createTestBusiness(owner, "Support Lock Fleet " + token);
+
+        User support = createTestUser("fin_sup_usr_" + token + "@islandride.test", RoleType.ROLE_SUPPORT_AGENT);
+        UserPrincipal supportPrincipal = UserPrincipal.create(support, null);
+        String supportToken = jwtTokenProvider.generateAccessToken(supportPrincipal);
+
+        mockMvc.perform(get("/api/v1/partners/financials/overview")
+                        .param("businessId", biz.getId().toString())
+                        .header("Authorization", "Bearer " + supportToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Financial Policy: Commission rate is dynamically configurable without code change")
+    void testConfigurableCommissionRate_RespectsNonDefaultRate() {
+        var settingOpt = systemSettingRepository.findBySettingKey(com.islandride.pricing.service.BookingPolicyService.KEY_COMMISSION_PERCENT);
+        org.junit.jupiter.api.Assertions.assertTrue(settingOpt.isPresent(), "Commission setting must exist in DB");
+        var setting = settingOpt.get();
+        String originalValue = setting.getSettingValue();
+
+        try {
+            setting.setSettingValue("8.50");
+            systemSettingRepository.saveAndFlush(setting);
+
+            var policy = bookingPolicyService.resolvePolicy(null, null);
+            org.junit.jupiter.api.Assertions.assertEquals(new BigDecimal("8.50"), policy.commissionPercentage(),
+                    "Policy resolution must immediately reflect non-default commission rate configured in system_settings");
+        } finally {
+            setting.setSettingValue(originalValue);
+            systemSettingRepository.saveAndFlush(setting);
+        }
     }
 
     private User createTestUser(String email, RoleType roleType) {

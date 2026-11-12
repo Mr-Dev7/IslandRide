@@ -17,6 +17,8 @@ import com.islandride.partner.repository.BusinessRepository;
 import com.islandride.paymentfinance.domain.PartnerReceivable;
 import com.islandride.paymentfinance.domain.ReceivableStatus;
 import com.islandride.paymentfinance.repository.PartnerReceivableRepository;
+import com.islandride.pricing.service.BookingPolicyService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,17 +35,21 @@ public class PartnerFinancialService {
     private final PartnerReceivableRepository receivableRepository;
     private final BusinessRepository businessRepository;
     private final TenantSecurityService tenantSecurityService;
+    private final BookingPolicyService bookingPolicyService;
 
+    @Autowired
     public PartnerFinancialService(CommissionRepository commissionRepository,
                                    SettlementRepository settlementRepository,
                                    PartnerReceivableRepository receivableRepository,
                                    BusinessRepository businessRepository,
-                                   TenantSecurityService tenantSecurityService) {
+                                   TenantSecurityService tenantSecurityService,
+                                   @Autowired(required = false) BookingPolicyService bookingPolicyService) {
         this.commissionRepository = commissionRepository;
         this.settlementRepository = settlementRepository;
         this.receivableRepository = receivableRepository;
         this.businessRepository = businessRepository;
         this.tenantSecurityService = tenantSecurityService;
+        this.bookingPolicyService = bookingPolicyService;
     }
 
     @Transactional(readOnly = true)
@@ -97,6 +103,13 @@ public class PartnerFinancialService {
                 .map(this::toSettlementDetailDto)
                 .toList();
 
+        int cycleDays = (bookingPolicyService != null)
+                ? bookingPolicyService.resolveSettlementCycleDays()
+                : 7;
+        boolean autoOffset = (bookingPolicyService != null)
+                ? bookingPolicyService.resolveSettlementAutoOffsetReceivables()
+                : true;
+
         return new PartnerFinancialOverviewDto(
                 business.getId(),
                 business.getTradeName(),
@@ -109,6 +122,8 @@ public class PartnerFinancialService {
                 pendingSettlementBalance,
                 openReceivablesBalance,
                 commissions.size(),
+                cycleDays,
+                autoOffset,
                 recentCommissions,
                 recentSettlements
         );
@@ -158,4 +173,3 @@ public class PartnerFinancialService {
         );
     }
 }
-

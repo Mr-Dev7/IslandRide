@@ -41,6 +41,9 @@ public class RazorpayGatewayAdapter implements PaymentGatewayAdapter {
     private volatile RestClient restClient;
     private final RestClient.Builder customClientBuilder;
 
+    @Autowired(required = false)
+    private com.islandride.pricing.service.BookingPolicyService bookingPolicyService;
+
     @Autowired
     public RazorpayGatewayAdapter(PaymentGatewayProperties properties) {
         this(properties, new ObjectMapper().findAndRegisterModules(), null);
@@ -262,9 +265,12 @@ public class RazorpayGatewayAdapter implements PaymentGatewayAdapter {
                             : RestClient.builder();
 
                     if (this.customClientBuilder == null) {
+                        int timeoutSec = (this.bookingPolicyService != null)
+                                ? this.bookingPolicyService.resolvePaymentGatewayHttpTimeoutSeconds()
+                                : properties.getRazorpay().getConnectTimeoutSeconds();
                         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-                        factory.setConnectTimeout(Duration.ofSeconds(properties.getRazorpay().getConnectTimeoutSeconds()));
-                        factory.setReadTimeout(Duration.ofSeconds(properties.getRazorpay().getReadTimeoutSeconds()));
+                        factory.setConnectTimeout(Duration.ofSeconds(timeoutSec));
+                        factory.setReadTimeout(Duration.ofSeconds(Math.max(timeoutSec, properties.getRazorpay().getReadTimeoutSeconds())));
                         builder.requestFactory(factory);
                     }
 

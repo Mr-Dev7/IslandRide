@@ -22,9 +22,31 @@ public final class PartnerFinancialDtos {
             BigDecimal pendingSettlementBalance,
             BigDecimal openReceivablesBalance,
             int totalCompletedBookings,
+            Integer settlementCycleDays,
+            Boolean autoOffsetReceivables,
             List<CommissionDetailDto> recentCommissions,
             List<SettlementDetailDto> recentSettlements
     ) {
+        public PartnerFinancialOverviewDto(
+                Long businessId,
+                String tradeName,
+                BigDecimal totalGrossBookings,
+                BigDecimal totalCommissionDeducted,
+                BigDecimal totalNetEarnings,
+                BigDecimal onlineCollectedByPlatform,
+                BigDecimal offlineCollectedByPartner,
+                BigDecimal totalSettledPaidOut,
+                BigDecimal pendingSettlementBalance,
+                BigDecimal openReceivablesBalance,
+                int totalCompletedBookings,
+                List<CommissionDetailDto> recentCommissions,
+                List<SettlementDetailDto> recentSettlements
+        ) {
+            this(businessId, tradeName, totalGrossBookings, totalCommissionDeducted, totalNetEarnings,
+                    onlineCollectedByPlatform, offlineCollectedByPartner, totalSettledPaidOut,
+                    pendingSettlementBalance, openReceivablesBalance, totalCompletedBookings,
+                    7, true, recentCommissions, recentSettlements);
+        }
     }
 
     public record CommissionDetailDto(
@@ -55,4 +77,3 @@ public final class PartnerFinancialDtos {
     ) {
     }
 }
-

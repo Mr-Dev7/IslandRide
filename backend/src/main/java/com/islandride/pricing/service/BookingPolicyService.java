@@ -58,6 +58,11 @@ public class BookingPolicyService {
     public static final String KEY_REFUND_RETRY_BACKOFF_MINUTES = "refund.retry.backoff_minutes";
     public static final String KEY_PAYMENT_RECONCILIATION_STALE_MINUTES = "payment.reconciliation.stale_minutes";
 
+    // V14 Phase 6C operational keys
+    public static final String KEY_PAYMENT_GATEWAY_HTTP_TIMEOUT_SECONDS = "payment.gateway.http_timeout_seconds";
+    public static final String KEY_SETTLEMENT_AUTO_OFFSET_RECEIVABLES = "partner.settlement.auto_offset_receivables";
+    public static final String KEY_SETTLEMENT_CYCLE_DAYS = "partner.settlement.cycle_days";
+
     private final PartnerPolicyRepository partnerPolicyRepository;
     private final SystemSettingRepository systemSettingRepository;
 
@@ -238,6 +243,21 @@ public class BookingPolicyService {
     @Transactional(readOnly = true)
     public int resolvePaymentReconciliationStaleMinutes() {
         return requireIntSetting(KEY_PAYMENT_RECONCILIATION_STALE_MINUTES);
+    }
+
+    @Transactional(readOnly = true)
+    public int resolvePaymentGatewayHttpTimeoutSeconds() {
+        return requireIntSetting(KEY_PAYMENT_GATEWAY_HTTP_TIMEOUT_SECONDS);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean resolveSettlementAutoOffsetReceivables() {
+        return requireBooleanSetting(KEY_SETTLEMENT_AUTO_OFFSET_RECEIVABLES);
+    }
+
+    @Transactional(readOnly = true)
+    public int resolveSettlementCycleDays() {
+        return requireIntSetting(KEY_SETTLEMENT_CYCLE_DAYS);
     }
 
     private int resolveTurnaroundBuffer(Integer vehicleOverride, Integer partnerOverride) {

@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    IslandRide — Automated Local One-Command Startup Script
+    IslandRide - Automated Local One-Command Startup Script
 .DESCRIPTION
     Verifies development prerequisites (Docker, Java 25, Node.js, npm), starts Docker Compose
     infrastructure (MySQL 8.4 and Redis 7.4), performs health checks, detects existing processes
@@ -18,7 +18,7 @@ $BackendDir = Join-Path $RepoRoot "backend"
 $FrontendDir = Join-Path $RepoRoot "frontend"
 
 Write-Host "================================================================================" -ForegroundColor Cyan
-Write-Host "                IslandRide — Local Development Environment Startup              " -ForegroundColor Cyan
+Write-Host "                IslandRide - Local Development Environment Startup              " -ForegroundColor Cyan
 Write-Host "================================================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -104,6 +104,7 @@ Write-Host ""
 Write-Host "[2/5] Starting Infrastructure Containers (MySQL 8.4 on :3307 & Redis 7.4 on :6379)..." -ForegroundColor Yellow
 
 # Detect compose command syntax (docker compose vs docker-compose)
+$composeFile = Join-Path $RepoRoot "docker-compose.yml"
 $useLegacy = $false
 try {
     $testCompose = & docker compose version 2>&1
@@ -115,13 +116,13 @@ try {
 }
 
 if ($useLegacy) {
-    & docker-compose up -d mysql redis
+    & docker-compose -f "$composeFile" up -d mysql redis
 } else {
-    & docker compose up -d mysql redis
+    & docker compose -f "$composeFile" up -d mysql redis
 }
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "  [ERROR] Failed to start infrastructure containers with Docker Compose." -ForegroundColor Red
+    Write-Host "  [ERROR] Failed to start infrastructure containers with Docker Compose ($composeFile)." -ForegroundColor Red
     exit 1
 }
 
@@ -129,7 +130,46 @@ if ($LASTEXITCODE -ne 0) {
 function Test-PortListening {
     param([int]$Port)
     $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
-    return ($null -ne $conn)
+    if ($null -ne $conn) {
+        return $true
+    }
+    try {
+        $tcpClient = New-Object System.Net.Sockets.TcpClient
+        $iar = $tcpClient.BeginConnect("127.0.0.1", $Port, $null, $null)
+        $ready = $iar.AsyncWaitHandle.WaitOne(500, $false)
+        if ($ready) {
+            $tcpClient.EndConnect($iar)
+            $tcpClient.Close()
+            return $true
+        }
+    } catch {
+        # port not listening
+    }
+    return $false
+}
+
+# Helper: Get process information for listening port
+function Get-PortProcessInfo {
+    param([int]$Port)
+    try {
+        $conns = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+        if ($conns) {
+            $pidList = $conns | Select-Object -ExpandProperty OwningProcess -Unique
+            $procNames = @()
+            foreach ($p in $pidList) {
+                $proc = Get-Process -Id $p -ErrorAction SilentlyContinue
+                if ($proc) {
+                    $procNames += "$($proc.ProcessName) (PID: $p)"
+                } else {
+                    $procNames += "PID: $p"
+                }
+            }
+            return ($procNames -join ", ")
+        }
+    } catch {
+        # ignore
+    }
+    return "Unknown process"
 }
 
 # Wait for MySQL (Port 3307)
@@ -158,7 +198,8 @@ while ($mysqlElapsed -lt $mysqlTimeoutSeconds) {
 
 if (-not $mysqlReady) {
     Write-Host ""
-    Write-Host "  [ERROR] MySQL did not become ready on port 3307 within $mysqlTimeoutSeconds seconds." -ForegroundColor Red
+    $procInfo = Get-PortProcessInfo 3307
+    Write-Host "  [ERROR] MySQL did not become ready on port 3307 within $mysqlTimeoutSeconds seconds (Port listener: $procInfo)." -ForegroundColor Red
     exit 1
 }
 Write-Host " READY" -ForegroundColor Green
@@ -181,7 +222,8 @@ while ($redisElapsed -lt $redisTimeoutSeconds) {
 
 if (-not $redisReady) {
     Write-Host ""
-    Write-Host "  [ERROR] Redis did not become ready on port 6379 within $redisTimeoutSeconds seconds." -ForegroundColor Red
+    $procInfo = Get-PortProcessInfo 6379
+    Write-Host "  [ERROR] Redis did not become ready on port 6379 within $redisTimeoutSeconds seconds (Port listener: $procInfo)." -ForegroundColor Red
     exit 1
 }
 Write-Host " READY" -ForegroundColor Green
@@ -214,7 +256,9 @@ if (Test-PortListening 8080) {
         Write-Host "  [ALREADY ACTIVE] Backend is already running and healthy on port 8080." -ForegroundColor Cyan
         $backendAlreadyRunning = $true
     } else {
-        Write-Host "  [BUSY] Port 8080 is listening, checking responsiveness..." -ForegroundColor Yellow
+        $procInfo = Get-PortProcessInfo 8080
+        Write-Host "  [PORT CONFLICT / BUSY] Port 8080 is listening ($procInfo) but failed IslandRide health probes." -ForegroundColor Yellow
+        Write-Host "  Assuming an existing backend instance or conflicting process is using port 8080. Skipping duplicate launch." -ForegroundColor Yellow
         $backendAlreadyRunning = $true
     }
 }
@@ -262,7 +306,9 @@ if (Test-PortListening 4200) {
         Write-Host "  [ALREADY ACTIVE] Frontend is already running and accessible on port 4200." -ForegroundColor Cyan
         $frontendAlreadyRunning = $true
     } else {
-        Write-Host "  [BUSY] Port 4200 is listening, skipping duplicate launch." -ForegroundColor Yellow
+        $procInfo = Get-PortProcessInfo 4200
+        Write-Host "  [PORT CONFLICT / BUSY] Port 4200 is listening ($procInfo) but failed HTTP probe." -ForegroundColor Yellow
+        Write-Host "  Assuming an existing frontend instance or conflicting process is using port 4200. Skipping duplicate launch." -ForegroundColor Yellow
         $frontendAlreadyRunning = $true
     }
 }

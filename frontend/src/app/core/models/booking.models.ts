@@ -481,6 +481,8 @@ export interface PartnerFinancialOverviewDto {
   pendingSettlementBalance: number;
   openReceivablesBalance: number;
   totalCompletedBookings: number;
+  settlementCycleDays?: number;
+  autoOffsetReceivables?: boolean;
   recentCommissions: CommissionDetailDto[];
   recentSettlements: SettlementDetailDto[];
 }
