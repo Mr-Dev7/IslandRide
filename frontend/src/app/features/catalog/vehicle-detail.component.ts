@@ -1,8 +1,11 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { AuthService } from '../../core/services/auth.service';
+import { BookingService } from '../../core/services/booking.service';
 import { CatalogService } from '../../core/services/catalog.service';
+import { PaymentMode, PricePreviewResponse } from '../../core/models/booking.models';
 import {
   PublicVehicleDetailDto,
   VehicleAvailabilityCalendarDto,
@@ -145,17 +148,70 @@ import {
               </div>
 
               <div class="ir-card pad">
-                <h3>Check Availability</h3>
-                <div class="field"><label for="chkStart">Start</label><input id="chkStart" type="datetime-local" [(ngModel)]="checkStart" /></div>
-                <div class="field"><label for="chkEnd">End</label><input id="chkEnd" type="datetime-local" [(ngModel)]="checkEnd" /></div>
-                <button type="button" class="ir-btn ir-btn-primary full-width" (click)="checkWindowAvailability()">
-                  Check Availability Window
+                <h3>Check Availability & Live Quote</h3>
+                <div class="field"><label for="chkStart">Pickup Date & Time</label><input id="chkStart" type="datetime-local" [(ngModel)]="checkStart" /></div>
+                <div class="field"><label for="chkEnd">Return Date & Time</label><input id="chkEnd" type="datetime-local" [(ngModel)]="checkEnd" /></div>
+
+                <div class="field">
+                  <label for="payMode">Payment Option</label>
+                  <select id="payMode" [(ngModel)]="paymentMode" (change)="refreshQuoteIfReady()">
+                    <option value="FULL">Pay Full Amount Online</option>
+                    <option value="PARTIAL_ADVANCE">Pay Advance Online + Balance at Pickup</option>
+                  </select>
+                </div>
+
+                @if (v.pricingPlan.deliveryFee > 0) {
+                  <label class="checkbox-row">
+                    <input type="checkbox" [(ngModel)]="deliveryRequested" (change)="refreshQuoteIfReady()" />
+                    <span>Request hub/hotel delivery (+₹{{ v.pricingPlan.deliveryFee | number: '1.0-0' }})</span>
+                  </label>
+                }
+
+                <button type="button" class="ir-btn ir-btn-primary full-width" (click)="checkWindowAvailability()" [disabled]="quoting()">
+                  {{ quoting() ? 'Calculating...' : 'Check Availability & Quote' }}
                 </button>
 
                 @if (availabilityError()) {
                   <div class="ir-alert ir-alert-error mt-sm">{{ availabilityError() }}</div>
                 }
-                @if (calendar(); as cal) {
+                @if (quote(); as q) {
+                  <div class="quote-box mt-sm">
+                    <div class="avail-banner" [class.ok]="q.available" [class.busy]="!q.available">
+                      @if (q.available) {
+                        <strong>Available! {{ q.bookingMode === 'APPROVAL' ? 'Requires Partner Approval' : 'Instant Confirmation' }}</strong>
+                      } @else {
+                        <strong>Not available: {{ q.conflictReason || 'Scheduled conflict in timeframe.' }}</strong>
+                      }
+                    </div>
+
+                    <dl class="pricing-dl mt-sm">
+                      <div><dt>Rental ({{ q.billableDays }}d / {{ q.billingUnit }})</dt><dd>₹{{ q.baseRentalAmount | number: '1.2-2' }}</dd></div>
+                      @if (q.seasonalAdjustmentAmount !== 0) {
+                        <div><dt>Seasonal Adjustment</dt><dd>₹{{ q.seasonalAdjustmentAmount | number: '1.2-2' }}</dd></div>
+                      }
+                      @if (q.cleaningFee > 0) {
+                        <div><dt>Cleaning Fee</dt><dd>₹{{ q.cleaningFee | number: '1.2-2' }}</dd></div>
+                      }
+                      @if (q.deliveryFee > 0) {
+                        <div><dt>Delivery Fee</dt><dd>₹{{ q.deliveryFee | number: '1.2-2' }}</dd></div>
+                      }
+                      <div><dt>GST ({{ q.gstPercentage }}%)</dt><dd>₹{{ q.taxAmount | number: '1.2-2' }}</dd></div>
+                      <div><dt><strong>Total Payable</strong></dt><dd><strong>₹{{ q.totalPayableAmount | number: '1.2-2' }}</strong></dd></div>
+                      <div><dt>Due Now ({{ q.enforcedPaymentMode === 'PARTIAL_ADVANCE' ? q.advancePercentageApplied + '% Advance' : 'Full Online' }})</dt><dd>₹{{ q.advanceDueNow | number: '1.2-2' }}</dd></div>
+                      @if (q.pickupBalanceDue > 0) {
+                        <div><dt>Due at Pickup</dt><dd>₹{{ q.pickupBalanceDue | number: '1.2-2' }}</dd></div>
+                      }
+                      <div><dt>Security Deposit ({{ q.depositCollectionMethod }})</dt><dd>₹{{ q.securityDepositAmount | number: '1.2-2' }}</dd></div>
+                    </dl>
+
+                    @if (q.available) {
+                      <button type="button" class="ir-btn ir-btn-primary full-width mt-sm" (click)="reserveAndCheckout()" [disabled]="reserving()">
+                        {{ reserving() ? 'Locking Vehicle...' : 'Reserve & Proceed to Checkout' }}
+                      </button>
+                      <p class="muted small mt-sm">Holds the vehicle for {{ q.holdDurationSeconds / 60 | number: '1.0-0' }} minutes. Free cancellation up to {{ q.cancellationDeadlineHours }}h before pickup.</p>
+                    }
+                  </div>
+                } @else if (calendar(); as cal) {
                   <div class="avail-banner" [class.ok]="cal.availableForRequestedWindow" [class.busy]="!cal.availableForRequestedWindow">
                     @if (cal.availableForRequestedWindow) {
                       <strong>Available for your selected dates!</strong>
@@ -174,10 +230,9 @@ import {
                       }
                     </ul>
                   } @else {
-                    <p class="muted small mt-sm">No upcoming unavailable blocks in this window.</p>
+                    <p class="muted small mt-sm">Select pickup & return dates to generate a live authoritative price quote.</p>
                   }
                 }
-                <p class="muted small mt-sm">Live availability lookup only. Booking & checkout will open in Phase 6.</p>
               </div>
             </aside>
           </div>
@@ -217,17 +272,25 @@ import {
 })
 export class VehicleDetailComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly catalogService = inject(CatalogService);
+  private readonly bookingService = inject(BookingService);
+  private readonly authService = inject(AuthService);
 
   vehicle = signal<PublicVehicleDetailDto | null>(null);
   calendar = signal<VehicleAvailabilityCalendarDto | null>(null);
+  quote = signal<PricePreviewResponse | null>(null);
   selectedImageUrl = signal<string | null>(null);
   loading = signal<boolean>(true);
+  quoting = signal<boolean>(false);
+  reserving = signal<boolean>(false);
   error = signal<string | null>(null);
   availabilityError = signal<string | null>(null);
 
   checkStart = '';
   checkEnd = '';
+  paymentMode: PaymentMode = 'FULL';
+  deliveryRequested = false;
   private vehiclePublicId = '';
 
   ngOnInit(): void {
@@ -264,15 +327,74 @@ export class VehicleDetailComponent implements OnInit {
   checkWindowAvailability(): void {
     this.availabilityError.set(null);
     if (!this.checkStart || !this.checkEnd) {
-      this.availabilityError.set('Please select both Start and End timestamps.');
+      this.availabilityError.set('Please select both Pickup and Return timestamps.');
       return;
     }
     const fromIso = new Date(this.checkStart).toISOString();
     const toIso = new Date(this.checkEnd).toISOString();
+    this.quoting.set(true);
     this.catalogService.getVehicleAvailability(this.vehiclePublicId, fromIso, toIso).subscribe({
       next: (cal) => this.calendar.set(cal),
-      error: (err) =>
-        this.availabilityError.set(err?.error?.detail || 'Invalid availability window.'),
     });
+    this.bookingService
+      .getPublicQuote(this.vehiclePublicId, fromIso, toIso, {
+        paymentMode: this.paymentMode,
+        deliveryRequested: this.deliveryRequested,
+      })
+      .subscribe({
+        next: (q) => {
+          this.quote.set(q);
+          this.quoting.set(false);
+        },
+        error: (err) => {
+          this.quote.set(null);
+          this.quoting.set(false);
+          this.availabilityError.set(err?.error?.detail || err?.error?.message || 'Unable to compute quote for this window.');
+        },
+      });
+  }
+
+  refreshQuoteIfReady(): void {
+    if (this.checkStart && this.checkEnd && this.quote()) {
+      this.checkWindowAvailability();
+    }
+  }
+
+  reserveAndCheckout(): void {
+    if (!this.authService.isAuthenticated()) {
+      this.router.navigate(['/auth/login'], { queryParams: { returnUrl: `/vehicles/${this.vehiclePublicId}` } });
+      return;
+    }
+    if (!this.authService.isTourist()) {
+      this.availabilityError.set('Please sign in with a Tourist account to reserve a vehicle.');
+      return;
+    }
+    const fromIso = new Date(this.checkStart).toISOString();
+    const toIso = new Date(this.checkEnd).toISOString();
+    this.reserving.set(true);
+    this.availabilityError.set(null);
+    const idempKey = `hld_${this.vehiclePublicId}_${Date.now()}`;
+
+    this.bookingService
+      .acquireHold(
+        {
+          vehiclePublicId: this.vehiclePublicId,
+          startTime: fromIso,
+          endTime: toIso,
+          purpose: 'CHECKOUT',
+          idempotencyKey: idempKey,
+        },
+        idempKey
+      )
+      .subscribe({
+        next: (hold) => {
+          this.reserving.set(false);
+          this.router.navigate(['/tourist/checkout', hold.publicId]);
+        },
+        error: (err) => {
+          this.reserving.set(false);
+          this.availabilityError.set(err?.error?.detail || err?.error?.message || 'Could not acquire vehicle hold.');
+        },
+      });
   }
 }

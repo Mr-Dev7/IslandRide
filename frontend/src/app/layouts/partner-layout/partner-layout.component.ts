@@ -14,6 +14,7 @@ import { AuthService } from '../../core/services/auth.service';
         <nav class="sidebar-nav">
           <a routerLink="/partner">Dashboard</a>
           <a routerLink="/partner/fleet">Fleet Inventory</a>
+          <a routerLink="/partner/bookings">Bookings & Handovers</a>
           <a routerLink="/partner/calendar">Calendar</a>
           <a routerLink="/partner/financials">Financials</a>
         </nav>

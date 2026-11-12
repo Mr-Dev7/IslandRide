@@ -51,6 +51,13 @@ public class BookingPolicyService {
     public static final String KEY_DEPOSIT_INSPECTION_WINDOW_HOURS = "booking.deposit.inspection_window_hours.default";
     public static final String KEY_DISRUPTION_RESCHEDULING_ALLOWED = "booking.disruption.rescheduling_allowed.default";
 
+    // V13 Phase 6B operational keys
+    public static final String KEY_INSTANT_PAYMENT_WINDOW_MINUTES = "booking.instant.payment_window_minutes";
+    public static final String KEY_MODIFICATION_CUTOFF_HOURS = "booking.modification.cutoff_hours";
+    public static final String KEY_REFUND_RETRY_MAX_ATTEMPTS = "refund.retry.max_attempts";
+    public static final String KEY_REFUND_RETRY_BACKOFF_MINUTES = "refund.retry.backoff_minutes";
+    public static final String KEY_PAYMENT_RECONCILIATION_STALE_MINUTES = "payment.reconciliation.stale_minutes";
+
     private final PartnerPolicyRepository partnerPolicyRepository;
     private final SystemSettingRepository systemSettingRepository;
 
@@ -195,6 +202,42 @@ public class BookingPolicyService {
     @Transactional(readOnly = true)
     public int resolveDefaultTurnaroundBufferMinutes() {
         return requireIntSetting(KEY_TURNAROUND_BUFFER_MINUTES);
+    }
+
+    @Transactional(readOnly = true)
+    public int resolveInstantPaymentWindowMinutes() {
+        return requireIntSetting(KEY_INSTANT_PAYMENT_WINDOW_MINUTES);
+    }
+
+    @Transactional(readOnly = true)
+    public java.time.Instant computeInstantPaymentDeadline(java.time.Instant now, java.time.Instant pickupStart) {
+        java.time.Instant effectiveNow = now != null ? now : java.time.Instant.now();
+        int minutes = Math.max(1, resolveInstantPaymentWindowMinutes());
+        java.time.Instant deadline = effectiveNow.plus(java.time.Duration.ofMinutes(minutes));
+        if (pickupStart != null && pickupStart.isBefore(deadline)) {
+            return pickupStart;
+        }
+        return deadline;
+    }
+
+    @Transactional(readOnly = true)
+    public int resolveModificationCutoffHours() {
+        return requireIntSetting(KEY_MODIFICATION_CUTOFF_HOURS);
+    }
+
+    @Transactional(readOnly = true)
+    public int resolveRefundRetryMaxAttempts() {
+        return requireIntSetting(KEY_REFUND_RETRY_MAX_ATTEMPTS);
+    }
+
+    @Transactional(readOnly = true)
+    public int resolveRefundRetryBackoffMinutes() {
+        return requireIntSetting(KEY_REFUND_RETRY_BACKOFF_MINUTES);
+    }
+
+    @Transactional(readOnly = true)
+    public int resolvePaymentReconciliationStaleMinutes() {
+        return requireIntSetting(KEY_PAYMENT_RECONCILIATION_STALE_MINUTES);
     }
 
     private int resolveTurnaroundBuffer(Integer vehicleOverride, Integer partnerOverride) {

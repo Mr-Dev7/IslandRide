@@ -16,4 +16,6 @@ public interface OverbookingExceptionRecordRepository extends JpaRepository<Over
     Optional<OverbookingExceptionRecord> findByBookingId(Long bookingId);
 
     List<OverbookingExceptionRecord> findByStatusOrderByDetectedAtDesc(OverbookingExceptionStatus status);
+
+    List<OverbookingExceptionRecord> findAllByOrderByDetectedAtDesc();
 }

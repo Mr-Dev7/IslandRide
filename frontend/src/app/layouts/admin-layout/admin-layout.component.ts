@@ -19,6 +19,7 @@ import { AuthService } from '../../core/services/auth.service';
             <a routerLink="/admin/catalog-config">Catalog & Islands</a>
           }
           <a routerLink="/admin/bookings">Bookings</a>
+          <a routerLink="/admin/finance">Finance & Trust</a>
           <a routerLink="/admin/settlements">Settlements</a>
         </nav>
       </aside>

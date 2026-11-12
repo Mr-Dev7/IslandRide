@@ -2,6 +2,8 @@ package com.islandride.paymentfinance.repository;
 
 import com.islandride.paymentfinance.domain.PaymentWebhookEvent;
 import com.islandride.paymentfinance.domain.WebhookProcessingStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -16,5 +18,7 @@ public interface PaymentWebhookEventRepository extends JpaRepository<PaymentWebh
     Optional<PaymentWebhookEvent> findByPublicId(String publicId);
 
     List<PaymentWebhookEvent> findByProcessingStatus(WebhookProcessingStatus status);
+
+    Page<PaymentWebhookEvent> findAllByOrderByReceivedAtDesc(Pageable pageable);
 }
 

@@ -49,6 +49,10 @@ public class BookingStateMachine {
 
         allow(BookingStatus.DISPUTED, BookingStatus.COMPLETED, BookingActorRole.ADMIN);
         allow(BookingStatus.DISPUTED, BookingStatus.CANCELLED, BookingActorRole.ADMIN);
+
+        // Late gateway capture arbitration executed strictly by SYSTEM under Vehicle PESSIMISTIC_WRITE lock
+        allow(BookingStatus.EXPIRED, BookingStatus.CONFIRMED, BookingActorRole.SYSTEM);
+        allow(BookingStatus.EXPIRED, BookingStatus.CANCELLED, BookingActorRole.SYSTEM);
     }
 
     private static void allow(BookingStatus from, BookingStatus to, BookingActorRole... actors) {

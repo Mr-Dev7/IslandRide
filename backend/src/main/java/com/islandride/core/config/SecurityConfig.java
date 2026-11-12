@@ -59,6 +59,7 @@ public class SecurityConfig {
                     "/api/v1/auth/forgot-password",
                     "/api/v1/auth/reset-password",
                     "/api/v1/partners/register",
+                    "/api/v1/payments/webhooks/**",
                     "/api/v1/health",
                     "/actuator/**",
                     "/v3/api-docs/**",
@@ -97,6 +98,12 @@ public class SecurityConfig {
                     "/api/v1/vehicles/**",
                     "/api/v1/media/vehicle-images/**"
                 ).permitAll()
+
+                // Public Inbound Payment Gateway Webhooks (Signature verified by HMAC before parse)
+                .requestMatchers(HttpMethod.POST, "/api/v1/payments/webhooks/**").permitAll()
+
+                // Public / Guest Price Preview Quote
+                .requestMatchers(HttpMethod.GET, "/api/v1/public/bookings/**").permitAll()
 
                 // Administrative Governance Portal Endpoints
                 .requestMatchers("/api/v1/admin/**").hasAnyRole(

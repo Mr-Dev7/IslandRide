@@ -78,8 +78,22 @@ export const routes: Routes = [
       {
         path: 'bookings',
         loadComponent: () =>
-          import('./features/tourist-dashboard/tourist-dashboard.component').then(
-            (m) => m.TouristDashboardComponent
+          import('./features/tourist/bookings/tourist-bookings.component').then(
+            (m) => m.TouristBookingsComponent
+          ),
+      },
+      {
+        path: 'bookings/:publicId',
+        loadComponent: () =>
+          import('./features/tourist/bookings/tourist-booking-detail.component').then(
+            (m) => m.TouristBookingDetailComponent
+          ),
+      },
+      {
+        path: 'checkout/:holdPublicId',
+        loadComponent: () =>
+          import('./features/tourist/checkout/tourist-checkout.component').then(
+            (m) => m.TouristCheckoutComponent
           ),
       },
     ],
@@ -138,6 +152,20 @@ export const routes: Routes = [
             (m) => m.PartnerCalendarHubsComponent
           ),
       },
+      {
+        path: 'bookings',
+        loadComponent: () =>
+          import('./features/partner-fleet/partner-bookings-list.component').then(
+            (m) => m.PartnerBookingsListComponent
+          ),
+      },
+      {
+        path: 'bookings/:publicId',
+        loadComponent: () =>
+          import('./features/partner-fleet/partner-booking-detail.component').then(
+            (m) => m.PartnerBookingDetailComponent
+          ),
+      },
     ],
   },
 
@@ -182,6 +210,24 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/admin-fleet/admin-catalog-config.component').then(
             (m) => m.AdminCatalogConfigComponent
+          ),
+      },
+      {
+        path: 'bookings',
+        canActivate: [roleGuard],
+        data: { roles: ['ROLE_SUPER_ADMIN', 'ROLE_OPERATIONS_ADMIN', 'ROLE_SUPPORT_AGENT'] },
+        loadComponent: () =>
+          import('./features/admin-fleet/admin-bookings.component').then(
+            (m) => m.AdminBookingsComponent
+          ),
+      },
+      {
+        path: 'finance',
+        canActivate: [roleGuard],
+        data: { roles: ['ROLE_SUPER_ADMIN', 'ROLE_FINANCE_ADMIN'] },
+        loadComponent: () =>
+          import('./features/admin-fleet/admin-finance.component').then(
+            (m) => m.AdminFinanceComponent
           ),
       },
     ],
