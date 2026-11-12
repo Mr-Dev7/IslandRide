@@ -5,6 +5,7 @@ import com.islandride.administration.repository.AuditLogRepository;
 import com.islandride.administration.service.AdminFinanceOverviewService;
 import com.islandride.availability.domain.HoldPurpose;
 import com.islandride.availability.domain.HoldStatus;
+import com.islandride.availability.domain.InventoryHold;
 import com.islandride.availability.repository.InventoryHoldRepository;
 import com.islandride.availability.service.InventoryHoldService;
 import com.islandride.booking.domain.*;
@@ -1201,5 +1202,152 @@ class Stage6BBookingAndPaymentOrchestrationIntegrationTest {
         new BookingExpirationScheduler(bookingOrchestrationService).runBookingExpirationSweep();
         new RefundRetryScheduler(refundOrchestrationService).runRefundRetrySweep();
         new PaymentReconciliationScheduler(paymentOrchestrationService).runPaymentReconciliationSweep();
+    }
+
+    @Test
+    void disjointBookingsForSameVehicle_bothSucceedWithoutFalseConflict() {
+        Fixture fx = createFixture(BookingMode.INSTANT, new BigDecimal("1000.00"), new BigDecimal("2000.00"));
+        authenticate(fx.touristUserId(), null);
+
+        // Booking 1: Days 30 to 32
+        Instant start1 = testTime(30, 10);
+        Instant end1 = testTime(32, 16);
+        InventoryHoldService.HoldResult hold1 = holdService.acquireHold(new InventoryHoldService.AcquireHoldCommand(
+                fx.touristUserId(), fx.vehiclePublicId(), start1, end1, HoldPurpose.CHECKOUT, null, null, "hld_disj1_" + fx.token()));
+        BookingOrchestrationService.BookingCreationResult bkg1 = bookingOrchestrationService.createBookingFromHold(
+                fx.touristUserId(), new BookingDtos.CreateBookingRequest(
+                        hold1.publicId(), PaymentMode.FULL, false, "DL-AN01-2025-888881", "+919876543881", true, "bkg_disj1_" + fx.token()));
+        String pay1 = "pay_d1_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        String sig1 = calculateHmac(bkg1.checkoutOrder().gatewayOrderId() + "|" + pay1, paymentGatewayProperties.getMock().getKeySecret());
+        paymentOrchestrationService.verifyClientPayment(
+                fx.touristUserId(), new PaymentDtos.VerifyPaymentRequest(bkg1.booking().summary().publicId(), bkg1.checkoutOrder().gatewayOrderId(), pay1, sig1), "ver_disj1_" + fx.token());
+
+        // Booking 2: Days 35 to 37 (disjoint, well after booking 1 and turnaround buffer)
+        Instant start2 = testTime(35, 10);
+        Instant end2 = testTime(37, 16);
+        InventoryHoldService.HoldResult hold2 = holdService.acquireHold(new InventoryHoldService.AcquireHoldCommand(
+                fx.touristUserId(), fx.vehiclePublicId(), start2, end2, HoldPurpose.CHECKOUT, null, null, "hld_disj2_" + fx.token()));
+        BookingOrchestrationService.BookingCreationResult bkg2 = bookingOrchestrationService.createBookingFromHold(
+                fx.touristUserId(), new BookingDtos.CreateBookingRequest(
+                        hold2.publicId(), PaymentMode.FULL, false, "DL-AN01-2025-888882", "+919876543882", true, "bkg_disj2_" + fx.token()));
+        String pay2 = "pay_d2_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        String sig2 = calculateHmac(bkg2.checkoutOrder().gatewayOrderId() + "|" + pay2, paymentGatewayProperties.getMock().getKeySecret());
+        paymentOrchestrationService.verifyClientPayment(
+                fx.touristUserId(), new PaymentDtos.VerifyPaymentRequest(bkg2.booking().summary().publicId(), bkg2.checkoutOrder().gatewayOrderId(), pay2, sig2), "ver_disj2_" + fx.token());
+
+        Booking reloaded1 = bookingRepository.findByPublicId(bkg1.booking().summary().publicId()).orElseThrow();
+        Booking reloaded2 = bookingRepository.findByPublicId(bkg2.booking().summary().publicId()).orElseThrow();
+        assertThat(reloaded1.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        assertThat(reloaded2.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+    }
+
+    @Test
+    void turnaroundBufferConflict_rejectsOverlappingRequestWithinBufferWindow() {
+        Fixture fx = createFixture(BookingMode.INSTANT, new BigDecimal("1000.00"), new BigDecimal("2000.00"));
+        authenticate(fx.touristUserId(), null);
+
+        // Booking 1: Days 40 10:00 to Days 42 16:00
+        Instant start1 = testTime(40, 10);
+        Instant end1 = testTime(42, 16);
+        InventoryHoldService.HoldResult hold1 = holdService.acquireHold(new InventoryHoldService.AcquireHoldCommand(
+                fx.touristUserId(), fx.vehiclePublicId(), start1, end1, HoldPurpose.CHECKOUT, null, null, "hld_buf1_" + fx.token()));
+        BookingOrchestrationService.BookingCreationResult bkg1 = bookingOrchestrationService.createBookingFromHold(
+                fx.touristUserId(), new BookingDtos.CreateBookingRequest(
+                        hold1.publicId(), PaymentMode.FULL, false, "DL-AN01-2025-888883", "+919876543883", true, "bkg_buf1_" + fx.token()));
+        assertThat(bkg1).isNotNull();
+
+        // Fixture partner policy turnaround buffer is 60 minutes. So vehicle buffer extends until end1 + 60 mins.
+        // Attempting to hold at end1 + 30 mins (strictly within the 60-minute turnaround buffer)
+        Instant conflictingStart = end1.plus(Duration.ofMinutes(30));
+        Instant conflictingEnd = conflictingStart.plus(Duration.ofDays(2));
+
+        User otherTourist = new TransactionTemplate(transactionManager).execute(s -> {
+            User u = createUser("ROLE_TOURIST", "tr_buf_" + fx.token());
+            fx.extraUserIds().add(u.getId());
+            return u;
+        });
+        authenticate(otherTourist.getId(), null);
+
+        assertThatThrownBy(() -> holdService.acquireHold(new InventoryHoldService.AcquireHoldCommand(
+                otherTourist.getId(), fx.vehiclePublicId(), conflictingStart, conflictingEnd, HoldPurpose.CHECKOUT, null, null, "hld_buf2_" + fx.token())))
+                .isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    void holdExpirationRacingAgainstConversion_rejectsExpiredHold() {
+        Fixture fx = createFixture(BookingMode.INSTANT, new BigDecimal("1000.00"), new BigDecimal("2000.00"));
+        authenticate(fx.touristUserId(), null);
+
+        Instant start = testTime(45, 10);
+        Instant end = testTime(47, 16);
+        InventoryHoldService.HoldResult hold = holdService.acquireHold(new InventoryHoldService.AcquireHoldCommand(
+                fx.touristUserId(), fx.vehiclePublicId(), start, end, HoldPurpose.CHECKOUT, null, null, "hld_exprace_" + fx.token()));
+
+        // Simulate expiration right before conversion occurs
+        new TransactionTemplate(transactionManager).executeWithoutResult(s -> {
+            InventoryHold h = holdRepository.findById(hold.id()).orElseThrow();
+            h.setExpiresAt(Instant.now().minus(Duration.ofSeconds(10)));
+            holdRepository.save(h);
+        });
+
+        assertThatThrownBy(() -> bookingOrchestrationService.createBookingFromHold(
+                fx.touristUserId(), new BookingDtos.CreateBookingRequest(
+                        hold.publicId(), PaymentMode.FULL, false, "DL-AN01-2025-888884", "+919876543884", true, "bkg_exprace_" + fx.token())))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("expired");
+    }
+
+    @Test
+    void concurrentBookingConversionOnSameHold_onlyOneSucceeds() throws Exception {
+        Fixture fx = createFixture(BookingMode.INSTANT, new BigDecimal("1000.00"), new BigDecimal("2000.00"));
+        authenticate(fx.touristUserId(), null);
+
+        Instant start = testTime(50, 10);
+        Instant end = testTime(52, 16);
+        InventoryHoldService.HoldResult hold = holdService.acquireHold(new InventoryHoldService.AcquireHoldCommand(
+                fx.touristUserId(), fx.vehiclePublicId(), start, end, HoldPurpose.CHECKOUT, null, null, "hld_concbkg_" + fx.token()));
+
+        int threadCount = 2;
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        CountDownLatch readyLatch = new CountDownLatch(threadCount);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        AtomicInteger successCount = new AtomicInteger(0);
+        AtomicInteger conflictCount = new AtomicInteger(0);
+
+        for (int i = 0; i < threadCount; i++) {
+            final int index = i;
+            executor.submit(() -> {
+                readyLatch.countDown();
+                try {
+                    startLatch.await();
+                    authenticate(fx.touristUserId(), null);
+                    bookingOrchestrationService.createBookingFromHold(
+                            fx.touristUserId(),
+                            new BookingDtos.CreateBookingRequest(
+                                    hold.publicId(),
+                                    PaymentMode.FULL,
+                                    false,
+                                    "DL-AN01-2025-888885",
+                                    "+919876543885",
+                                    true,
+                                    "bkg_conc_" + index + "_" + fx.token()
+                            )
+                    );
+                    successCount.incrementAndGet();
+                } catch (ConflictException ex) {
+                    conflictCount.incrementAndGet();
+                } catch (Exception ex) {
+                    // unexpected
+                }
+            });
+        }
+
+        readyLatch.await(5, TimeUnit.SECONDS);
+        startLatch.countDown();
+        executor.shutdown();
+        assertThat(executor.awaitTermination(15, TimeUnit.SECONDS)).isTrue();
+
+        assertThat(successCount.get()).isEqualTo(1);
+        assertThat(conflictCount.get()).isEqualTo(1);
     }
 }
