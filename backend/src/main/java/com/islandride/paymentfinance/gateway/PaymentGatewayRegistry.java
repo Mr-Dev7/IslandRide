@@ -27,13 +27,11 @@ public class PaymentGatewayRegistry {
     }
 
     public PaymentGatewayAdapter getConfiguredAdapter() {
-        String key = properties.getProvider() != null
-                ? properties.getProvider().trim().toLowerCase(Locale.ROOT)
-                : MockGatewayAdapter.PROVIDER_CODE;
-        PaymentGatewayAdapter adapter = adapters.get(key);
-        if (adapter == null) {
-            adapter = adapters.get(RazorpayGatewayAdapter.PROVIDER_CODE);
+        if (properties.getProvider() == null || properties.getProvider().isBlank()) {
+            throw new BusinessRuleException("Payment gateway provider must be configured.");
         }
+        String key = properties.getProvider().trim().toLowerCase(Locale.ROOT);
+        PaymentGatewayAdapter adapter = adapters.get(key);
         if (adapter == null) {
             throw new BusinessRuleException("No payment gateway adapter is registered for provider: " + key);
         }

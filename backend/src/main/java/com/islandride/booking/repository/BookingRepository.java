@@ -56,14 +56,16 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
     @Query(value = """
             SELECT DISTINCT b.vehicle_id FROM bookings b
+            JOIN vehicles v ON v.id = b.vehicle_id
             LEFT JOIN partner_policies pp ON pp.business_id = b.business_id
             WHERE b.status NOT IN (:excludedStatuses)
-              AND b.start_time < DATE_ADD(:endTime, INTERVAL COALESCE(pp.turnaround_buffer_minutes, 60) MINUTE)
+              AND b.start_time < DATE_ADD(:endTime, INTERVAL COALESCE(v.turnaround_buffer_minutes, pp.turnaround_buffer_minutes, :defaultBufferMinutes) MINUTE)
               AND DATE_ADD(b.end_time, INTERVAL b.turnaround_buffer_minutes MINUTE) > :startTime
             """, nativeQuery = true)
     List<Long> findConflictingVehicleIdsWithBuffer(
             @Param("startTime") Instant startTime,
             @Param("endTime") Instant endTime,
+            @Param("defaultBufferMinutes") int defaultBufferMinutes,
             @Param("excludedStatuses") Collection<String> excludedStatuses
     );
 }

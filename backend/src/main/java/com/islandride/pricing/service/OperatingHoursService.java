@@ -70,6 +70,13 @@ public class OperatingHoursService {
                 ? locationRepository.findById(rawReturn.getId()).orElse(rawReturn)
                 : rawReturn;
 
+        if (!effectivePickup.isActive()) {
+            throw new BusinessRuleException("Pickup location is currently inactive: " + effectivePickup.getName());
+        }
+        if (!effectiveReturn.isActive()) {
+            throw new BusinessRuleException("Return location is currently inactive: " + effectiveReturn.getName());
+        }
+
         Long vehicleIslandId = managedVehicle.getIsland().getId();
         if (!effectivePickup.getIsland().getId().equals(vehicleIslandId)
                 || !effectiveReturn.getIsland().getId().equals(vehicleIslandId)) {
@@ -96,7 +103,7 @@ public class OperatingHoursService {
             }
         }
 
-        EffectiveBookingPolicy policy = bookingPolicyService.resolvePolicy(managedVehicle.getBusiness().getId());
+        EffectiveBookingPolicy policy = bookingPolicyService.resolvePolicy(managedVehicle);
         ZoneId zoneId = policy.operatingHoursTimezone();
         validateWindowInstant("pickup", managedVehicle.getBusiness().getId(), effectivePickup, startTime, zoneId, policy);
         validateWindowInstant("return", managedVehicle.getBusiness().getId(), effectiveReturn, endTime, zoneId, policy);

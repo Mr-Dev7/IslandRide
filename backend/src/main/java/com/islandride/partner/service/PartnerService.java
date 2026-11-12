@@ -82,12 +82,15 @@ public class PartnerService {
 
         Business savedBusiness = businessRepository.save(business);
 
-        // 3. Create PartnerStaff Record
+        // 3. Create PartnerStaff Record for owner with default operational permissions
         PartnerStaff staff = new PartnerStaff();
         staff.setBusiness(savedBusiness);
         staff.setUser(savedUser);
         staff.setRoleInBusiness("OWNER");
         staff.setActive(true);
+        staff.setCanRecordHandover(true);
+        staff.setCanCollectOfflinePayments(true);
+        staff.setCanMarkNoShow(true);
 
         partnerStaffRepository.save(staff);
 
@@ -98,7 +101,7 @@ public class PartnerService {
     public BusinessDto getMyBusiness(UserPrincipal principal) {
         // Find by ownership or staff membership
         return businessRepository.findByOwnerUserId(principal.getId())
-                .or(() -> partnerStaffRepository.findByUserIdAndActiveTrue(principal.getId()).map(PartnerStaff::getBusiness))
+                .or(() -> partnerStaffRepository.findFirstByUserIdAndActiveTrueOrderByIdAsc(principal.getId()).map(PartnerStaff::getBusiness))
                 .map(this::toBusinessDto)
                 .orElseThrow(() -> new ResourceNotFoundException("No active business associated with current account"));
     }

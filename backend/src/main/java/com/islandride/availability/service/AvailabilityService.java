@@ -115,7 +115,7 @@ public class AvailabilityService {
         Vehicle vehicle = vehicleRepository.findById(vehicleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Vehicle not found: " + vehicleId));
         Instant now = Instant.now();
-        int bufferMinutes = bookingPolicyService.resolvePolicy(vehicle.getBusiness().getId()).turnaroundBufferMinutes();
+        int bufferMinutes = bookingPolicyService.resolveTurnaroundBufferMinutes(vehicle);
         return findBufferedConflictReason(vehicleId, startTime, endTime, bufferMinutes, now) == null;
     }
 
@@ -221,22 +221,41 @@ public class AvailabilityService {
         validateWindow(windowStart, windowEnd);
 
         Instant now = Instant.now();
+        int bufferMinutes = bookingPolicyService.resolveTurnaroundBufferMinutes(vehicle);
         List<VehicleUnavailability> overlappingBlocks = unavailabilityRepository.findOverlappingBlocks(
                 vehicle.getId(), windowStart, windowEnd, AvailabilityBlockStatus.ACTIVE);
-        List<InventoryHold> overlappingHolds = holdRepository.findActiveOverlappingHolds(
-                vehicle.getId(), windowStart, windowEnd, HoldStatus.HELD, now);
-        List<Booking> overlappingBookings = bookingRepository.findOverlappingBookings(
-                vehicle.getId(), windowStart, windowEnd, NON_BLOCKING_BOOKING_STATUSES);
+        List<InventoryHold> overlappingHolds = holdRepository.findActiveOverlappingHoldsWithBuffer(
+                vehicle.getId(), windowStart, windowEnd, bufferMinutes, now);
+        List<Booking> overlappingBookings = bookingRepository.findOverlappingBookingsWithBuffer(
+                vehicle.getId(), windowStart, windowEnd, bufferMinutes, NON_BLOCKING_BOOKING_STATUS_NAMES);
 
         List<PublicAvailabilitySlotDto> publicSlots = new ArrayList<>();
         for (VehicleUnavailability block : overlappingBlocks) {
             publicSlots.add(toPublicSlot(block));
         }
         for (InventoryHold hold : overlappingHolds) {
-            publicSlots.add(new PublicAvailabilitySlotDto(hold.getStartTime(), hold.getEndTime(), "HOLD", "Temporarily held"));
+            if (hold.getStartTime().isBefore(windowEnd) && hold.getEndTime().isAfter(windowStart)) {
+                publicSlots.add(new PublicAvailabilitySlotDto(hold.getStartTime(), hold.getEndTime(), "HOLD", "Temporarily held"));
+            }
+            if (hold.getTurnaroundBufferMinutes() > 0) {
+                Instant bufferEnd = hold.getEndTime().plus(Duration.ofMinutes(hold.getTurnaroundBufferMinutes()));
+                if (hold.getEndTime().isBefore(windowEnd) && bufferEnd.isAfter(windowStart)) {
+                    publicSlots.add(new PublicAvailabilitySlotDto(
+                            hold.getEndTime(), bufferEnd, "TURNAROUND_BUFFER", "Turnaround & inspection buffer"));
+                }
+            }
         }
         for (Booking booking : overlappingBookings) {
-            publicSlots.add(new PublicAvailabilitySlotDto(booking.getStartTime(), booking.getEndTime(), "BOOKED", "Reserved"));
+            if (booking.getStartTime().isBefore(windowEnd) && booking.getEndTime().isAfter(windowStart)) {
+                publicSlots.add(new PublicAvailabilitySlotDto(booking.getStartTime(), booking.getEndTime(), "BOOKED", "Reserved"));
+            }
+            if (booking.getTurnaroundBufferMinutes() > 0) {
+                Instant bufferEnd = booking.getEndTime().plus(Duration.ofMinutes(booking.getTurnaroundBufferMinutes()));
+                if (booking.getEndTime().isBefore(windowEnd) && bufferEnd.isAfter(windowStart)) {
+                    publicSlots.add(new PublicAvailabilitySlotDto(
+                            booking.getEndTime(), bufferEnd, "TURNAROUND_BUFFER", "Turnaround & inspection buffer"));
+                }
+            }
         }
         publicSlots.sort(Comparator.comparing(PublicAvailabilitySlotDto::startTime));
 
@@ -244,7 +263,7 @@ public class AvailabilityService {
                 vehicle.getId(),
                 windowStart,
                 windowEnd,
-                bookingPolicyService.resolvePolicy(vehicle.getBusiness().getId()).turnaroundBufferMinutes(),
+                bufferMinutes,
                 now
         );
         boolean availableForRequestedWindow = conflictReason == null && vehicle.getStatus() == VehicleStatus.ACTIVE;

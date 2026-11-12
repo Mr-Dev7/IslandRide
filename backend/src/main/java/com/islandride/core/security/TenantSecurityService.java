@@ -44,9 +44,11 @@ public class TenantSecurityService {
             return false;
         }
 
-        // Platform administrators have universal oversight
+        // Platform administrators have legitimate oversight across existing non-deleted businesses
         if (principal.hasRole("ROLE_SUPER_ADMIN") || principal.hasRole("ROLE_OPERATIONS_ADMIN")) {
-            return true;
+            return businessRepository.findById(businessId)
+                    .map(b -> !b.isDeleted())
+                    .orElse(false);
         }
 
         // Check if user is the direct business owner
@@ -104,7 +106,9 @@ public class TenantSecurityService {
             return false;
         }
         if (principal.hasRole("ROLE_SUPER_ADMIN") || principal.hasRole("ROLE_OPERATIONS_ADMIN")) {
-            return true;
+            return businessRepository.findById(businessId)
+                    .map(b -> !b.isDeleted())
+                    .orElse(false);
         }
         Optional<Business> businessOpt = businessRepository.findById(businessId);
         if (businessOpt.isEmpty() || businessOpt.get().isDeleted()) {
@@ -301,22 +305,25 @@ public class TenantSecurityService {
         if (principal == null || businessId == null) {
             return false;
         }
-        if (principal.hasRole("ROLE_SUPER_ADMIN") || principal.hasRole("ROLE_OPERATIONS_ADMIN")) {
-            return true;
-        }
         if (!isBusinessApproved(businessId)) {
             return false;
         }
-        if (hasBusinessManagementAccess(businessId)) {
+        if (principal.hasRole("ROLE_SUPER_ADMIN") || principal.hasRole("ROLE_OPERATIONS_ADMIN")) {
             return true;
         }
         if (!hasBusinessAccess(businessId)) {
             return false;
         }
-        return partnerStaffRepository.findByBusinessIdAndUserId(businessId, principal.getId())
-                .filter(PartnerStaff::isActive)
-                .map(permissionCheck::test)
-                .orElse(false);
+        Optional<PartnerStaff> staffOpt = partnerStaffRepository.findByBusinessIdAndUserId(businessId, principal.getId());
+        if (staffOpt.isPresent()) {
+            PartnerStaff staff = staffOpt.get();
+            return staff.isActive() && permissionCheck.test(staff);
+        }
+        // Only a direct business owner without an explicit PartnerStaff row retains default owner operational authority
+        return hasBusinessManagementAccess(businessId)
+                && businessRepository.findById(businessId)
+                        .map(b -> !b.isDeleted() && b.getOwnerUser().getId().equals(principal.getId()))
+                        .orElse(false);
     }
 
     private UserPrincipal getCurrentPrincipal() {

@@ -97,11 +97,13 @@ public class BookingStateMachine {
                 && !effectiveNow.isBefore(booking.getApprovalExpiresAt())) {
             throw new BusinessRuleException("Partner approval deadline has already expired for booking " + booking.getPublicId());
         }
-        if (current == BookingStatus.APPROVED
+        if ((current == BookingStatus.APPROVED
+                || current == BookingStatus.PENDING_PAYMENT
+                || current == BookingStatus.PAYMENT_FAILED)
                 && (targetStatus == BookingStatus.PENDING_PAYMENT || targetStatus == BookingStatus.CONFIRMED)
                 && booking.getPaymentDeadlineAt() != null
                 && !effectiveNow.isBefore(booking.getPaymentDeadlineAt())) {
-            throw new BusinessRuleException("Post-approval payment window has already expired for booking " + booking.getPublicId());
+            throw new BusinessRuleException("Payment window deadline has already expired for booking " + booking.getPublicId());
         }
     }
 }

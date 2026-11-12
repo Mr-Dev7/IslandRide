@@ -10,6 +10,11 @@ import com.islandride.availability.repository.InventoryHoldRepository;
 import com.islandride.booking.domain.*;
 import com.islandride.booking.repository.BookingRepository;
 import com.islandride.booking.repository.HandoverInspectionRepository;
+import com.islandride.booking.repository.OverbookingExceptionRecordRepository;
+import com.islandride.booking.repository.SecurityDepositRecordRepository;
+import com.islandride.core.idempotency.IdempotencyRecord;
+import com.islandride.core.idempotency.IdempotencyRecordRepository;
+import com.islandride.core.idempotency.IdempotencyStatus;
 import com.islandride.commission.domain.Commission;
 import com.islandride.commission.domain.CommissionStatus;
 import com.islandride.commission.domain.Settlement;
@@ -34,11 +39,16 @@ import com.islandride.notifications.domain.NotificationTemplate;
 import com.islandride.notifications.repository.NotificationRepository;
 import com.islandride.notifications.repository.NotificationTemplateRepository;
 import com.islandride.partner.domain.Business;
+import com.islandride.partner.domain.PartnerStaff;
 import com.islandride.partner.domain.VerificationStatus;
 import com.islandride.partner.repository.BusinessRepository;
+import com.islandride.partner.repository.PartnerStaffRepository;
 import com.islandride.paymentfinance.domain.*;
 import com.islandride.paymentfinance.repository.OfflineCollectionRepository;
+import com.islandride.paymentfinance.repository.PartnerReceivableRepository;
+import com.islandride.paymentfinance.repository.PaymentAttemptRepository;
 import com.islandride.paymentfinance.repository.PaymentRepository;
+import com.islandride.paymentfinance.repository.PaymentWebhookEventRepository;
 import com.islandride.paymentfinance.repository.RefundRepository;
 import com.islandride.reviews.domain.Review;
 import com.islandride.reviews.domain.ReviewReport;
@@ -141,6 +151,27 @@ class DatabaseSchemaIntegrationTest {
 
     @Autowired
     private AuditLogRepository auditLogRepository;
+
+    @Autowired
+    private SecurityDepositRecordRepository securityDepositRecordRepository;
+
+    @Autowired
+    private OverbookingExceptionRecordRepository overbookingExceptionRecordRepository;
+
+    @Autowired
+    private PaymentWebhookEventRepository paymentWebhookEventRepository;
+
+    @Autowired
+    private PaymentAttemptRepository paymentAttemptRepository;
+
+    @Autowired
+    private PartnerReceivableRepository partnerReceivableRepository;
+
+    @Autowired
+    private PartnerStaffRepository partnerStaffRepository;
+
+    @Autowired
+    private IdempotencyRecordRepository idempotencyRecordRepository;
 
     @Test
     @DisplayName("Verify Flyway Seed Data: Roles, Islands, Categories, System Settings")
@@ -518,5 +549,210 @@ class DatabaseSchemaIntegrationTest {
 
         assertThat(user.isDeleted()).isTrue();
         assertThat(user.getDeletedAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("Verify Stage 6A V11/V12 Entities, Multi-Business Staff & Settings Persistence")
+    void testStage6AV11AndV12SchemaConstraintsAndEntities() {
+        // 1. Verify V8 and V12 system settings seeds exist
+        List<String> expectedKeys = List.of(
+                "hold.duration.seconds",
+                "turnaround.buffer.minutes.default",
+                "advance.payment.percentage.default",
+                "platform.commission.rate.default",
+                "booking.min_rental_hours.default",
+                "booking.max_rental_days.default",
+                "booking.cancellation.deadline_hours.default",
+                "booking.cancellation.free_allowed.default",
+                "booking.cancellation.fee_percentage.default",
+                "booking.deposit.inspection_window_hours.default",
+                "booking.disruption.rescheduling_allowed.default"
+        );
+        for (String key : expectedKeys) {
+            assertThat(systemSettingRepository.findBySettingKey(key))
+                    .as("Missing expected system setting key %s", key)
+                    .isPresent();
+        }
+
+        // 2. Verify multi-business PartnerStaff support (V12 constraint uk_partner_staff_business_user)
+        User ownerUser = new User();
+        ownerUser.setEmail("v12.owner." + UUID.randomUUID() + "@islandride.in");
+        ownerUser.setFirstName("Owner");
+        ownerUser.setLastName("Multi");
+        ownerUser.setPasswordHash("hash");
+        ownerUser = userRepository.saveAndFlush(ownerUser);
+
+        User staffUser = new User();
+        staffUser.setEmail("v12.staff." + UUID.randomUUID() + "@islandride.in");
+        staffUser.setFirstName("Staff");
+        staffUser.setLastName("Multi");
+        staffUser.setPasswordHash("hash");
+        staffUser = userRepository.saveAndFlush(staffUser);
+
+        Business biz1 = new Business();
+        biz1.setOwnerUser(ownerUser);
+        biz1.setLegalName("Island Multi Fleet 1");
+        biz1.setTradeName("Fleet One");
+        biz1.setVerificationStatus(VerificationStatus.APPROVED);
+        biz1 = businessRepository.saveAndFlush(biz1);
+
+        Business biz2 = new Business();
+        biz2.setOwnerUser(ownerUser);
+        biz2.setLegalName("Island Multi Fleet 2");
+        biz2.setTradeName("Fleet Two");
+        biz2.setVerificationStatus(VerificationStatus.APPROVED);
+        biz2 = businessRepository.saveAndFlush(biz2);
+
+        PartnerStaff staffBiz1 = new PartnerStaff();
+        staffBiz1.setBusiness(biz1);
+        staffBiz1.setUser(staffUser);
+        staffBiz1.setRoleInBusiness("MANAGER");
+        partnerStaffRepository.saveAndFlush(staffBiz1);
+
+        PartnerStaff staffBiz2 = new PartnerStaff();
+        staffBiz2.setBusiness(biz2);
+        staffBiz2.setUser(staffUser);
+        staffBiz2.setRoleInBusiness("STAFF");
+        partnerStaffRepository.saveAndFlush(staffBiz2);
+
+        assertThat(partnerStaffRepository.findByUserId(staffUser.getId())).hasSize(2);
+
+        // 3. Persist booking + V11 payment/deposit/overbooking/webhook/receivable/idempotency entities
+        Island island = islandRepository.findAll().get(0);
+        Location loc = locationRepository.findAll().get(0);
+        VehicleCategory category = categoryRepository.findAll().get(0);
+
+        Vehicle vehicle = new Vehicle();
+        vehicle.setBusiness(biz1);
+        vehicle.setIsland(island);
+        vehicle.setCategory(category);
+        vehicle.setMake("Suzuki");
+        vehicle.setModel("Access 125");
+        vehicle.setModelYear(2025);
+        vehicle.setRegistrationNumber("AN-01-V12-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase());
+        vehicle.setDailyRate(new BigDecimal("500.00"));
+        vehicle.setSecurityDeposit(new BigDecimal("2000.00"));
+        vehicle.setStatus(VehicleStatus.ACTIVE);
+        vehicle = vehicleRepository.saveAndFlush(vehicle);
+
+        Instant now = Instant.now();
+        Booking booking = new Booking();
+        booking.setBookingReference("V12-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase());
+        booking.setUser(staffUser);
+        booking.setVehicle(vehicle);
+        booking.setBusiness(biz1);
+        booking.setPickupLocation(loc);
+        booking.setReturnLocation(loc);
+        booking.setStartTime(now.plus(2, ChronoUnit.DAYS));
+        booking.setEndTime(now.plus(4, ChronoUnit.DAYS));
+        booking.setTotalDays(2);
+        booking.setDailyRate(new BigDecimal("500.00"));
+        booking.setBaseRentalAmount(new BigDecimal("1000.00"));
+        booking.setTaxAmount(new BigDecimal("50.00"));
+        booking.setCommissionRateSnapshot(new BigDecimal("4.00"));
+        booking.setSecurityDepositAmount(new BigDecimal("2000.00"));
+        booking.setTotalPayableAmount(new BigDecimal("1050.00"));
+        booking.setStatus(BookingStatus.CONFIRMED);
+        booking.setPaymentMode(PaymentMode.PARTIAL_ADVANCE);
+        booking.setBookingMode(BookingMode.INSTANT);
+        booking = bookingRepository.saveAndFlush(booking);
+
+        SecurityDepositRecord deposit = new SecurityDepositRecord();
+        deposit.setBooking(booking);
+        deposit.setCollectionMethod(SecurityDepositCollectionMethod.AT_PICKUP);
+        deposit.setExpectedAmount(new BigDecimal("2000.00"));
+        deposit.setCurrency("INR");
+        deposit.setStatus(SecurityDepositStatus.PENDING);
+        deposit.setInspectionStatus(DepositInspectionStatus.PENDING);
+        deposit.setInspectionDeadlineAt(now.plus(5, ChronoUnit.DAYS));
+        deposit = securityDepositRecordRepository.saveAndFlush(deposit);
+        assertThat(securityDepositRecordRepository.findByBookingId(booking.getId())).isPresent();
+        assertThat(deposit.getPublicId()).startsWith("dep_");
+
+        Payment payment = new Payment();
+        payment.setBooking(booking);
+        payment.setAmount(new BigDecimal("262.50"));
+        payment.setCurrency("INR");
+        payment.setPaymentType(PaymentType.RENTAL_ADVANCE);
+        payment.setDeposit(false);
+        payment.setPaymentMethod(PaymentMethod.GATEWAY);
+        payment.setGatewayProvider("mock");
+        payment.setGatewayOrderId("order_v12_" + UUID.randomUUID().toString().substring(0, 8));
+        payment.setGatewayPaymentId("pay_v12_" + UUID.randomUUID().toString().substring(0, 8));
+        payment.setGatewaySignature("sig_v12_test");
+        payment.setGatewayOrderExpiresAt(now.plus(15, ChronoUnit.MINUTES));
+        payment.setStatus(PaymentStatus.CAPTURED);
+        payment.setCapturedAt(now);
+        payment.setIdempotencyKey("v12-pay-" + UUID.randomUUID());
+        payment.addAttempt(1, "{\"order\":\"mock\"}", "{\"captured\":true}", "SUCCESS", null, null);
+        payment = paymentRepository.saveAndFlush(payment);
+        assertThat(paymentAttemptRepository.findByPaymentIdOrderByAttemptNumberAsc(payment.getId())).hasSize(1);
+
+        Refund refund = new Refund();
+        refund.setPayment(payment);
+        refund.setBooking(booking);
+        refund.setAmount(new BigDecimal("262.50"));
+        refund.setCurrency("INR");
+        refund.setReason("DISRUPTION_OVERRIDE");
+        refund.setRefundType(RefundType.RENTAL);
+        refund.setGatewayFeeRetained(BigDecimal.ZERO);
+        refund.setStatus(RefundStatus.PROCESSING);
+        refund.setInitiatedBy(ownerUser.getId());
+        refund.setApprovedBy(ownerUser.getId());
+        refund.setApprovedAt(now);
+        refund.setEscalationTicketRef("ESC-1001");
+        refund.setIdempotencyKey("v12-ref-" + UUID.randomUUID());
+        refund = refundRepository.saveAndFlush(refund);
+        assertThat(refund.getPublicId()).startsWith("ref_");
+
+        OverbookingExceptionRecord overbooking = new OverbookingExceptionRecord();
+        overbooking.setBooking(booking);
+        overbooking.setPaymentId(payment.getId());
+        overbooking.setStatus(OverbookingExceptionStatus.DETECTED);
+        overbooking = overbookingExceptionRecordRepository.saveAndFlush(overbooking);
+        assertThat(overbooking.getPublicId()).startsWith("obx_");
+
+        PaymentWebhookEvent webhook = new PaymentWebhookEvent();
+        webhook.setGatewayProvider("mock");
+        webhook.setGatewayEventId("evt_" + UUID.randomUUID());
+        webhook.setEventType("payment.captured");
+        webhook.setSignatureVerified(true);
+        webhook.setProcessingStatus(WebhookProcessingStatus.PROCESSED);
+        webhook.setBooking(booking);
+        webhook.setPayment(payment);
+        webhook.setPayloadJson("{\"event\":\"payment.captured\"}");
+        webhook.setProcessedAt(now);
+        webhook = paymentWebhookEventRepository.saveAndFlush(webhook);
+        assertThat(webhook.getPublicId()).startsWith("whk_");
+
+        PartnerReceivable receivable = new PartnerReceivable();
+        receivable.setBusiness(biz1);
+        receivable.setBooking(booking);
+        receivable.setAmountDueFromPartner(new BigDecimal("40.00"));
+        receivable.setStatus(ReceivableStatus.OPEN);
+        receivable = partnerReceivableRepository.saveAndFlush(receivable);
+        assertThat(receivable.getPublicId()).startsWith("rcv_");
+
+        IdempotencyRecord idem = new IdempotencyRecord();
+        idem.setScope("TEST_SCHEMA");
+        idem.setActorKey("usr:" + staffUser.getId());
+        idem.setIdempotencyKey("key-" + UUID.randomUUID());
+        idem.setRequestHash("a".repeat(64));
+        idem.setStatus(IdempotencyStatus.COMPLETED);
+        idem.setHttpStatus(201);
+        idem.setResourcePublicId("res_123");
+        idem.setResponseBody("{\"ok\":true}");
+        idem.setExpiresAt(now.plus(1, ChronoUnit.DAYS));
+        idem = idempotencyRecordRepository.saveAndFlush(idem);
+        assertThat(idem.getId()).isNotNull();
+
+        // 4. Duplicate membership within the same business is still blocked by uk_partner_staff_business_user
+        // (tested last because a constraint-violation flush invalidates the active Hibernate session)
+        PartnerStaff duplicateSameBiz = new PartnerStaff();
+        duplicateSameBiz.setBusiness(biz1);
+        duplicateSameBiz.setUser(staffUser);
+        duplicateSameBiz.setRoleInBusiness("STAFF");
+        assertThatThrownBy(() -> partnerStaffRepository.saveAndFlush(duplicateSameBiz))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 }

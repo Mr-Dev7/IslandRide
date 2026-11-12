@@ -13,6 +13,7 @@ import com.islandride.inventory.dto.PublicVehicleSummaryDto;
 import com.islandride.inventory.repository.VehicleImageRepository;
 import com.islandride.inventory.repository.VehicleRepository;
 import com.islandride.partner.domain.VerificationStatus;
+import com.islandride.pricing.service.BookingPolicyService;
 import com.islandride.pricing.service.VehiclePricingService;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -38,6 +39,7 @@ public class PublicCatalogService {
     private final VehicleRepository vehicleRepository;
     private final VehicleImageRepository imageRepository;
     private final VehiclePricingService pricingService;
+    private final BookingPolicyService bookingPolicyService;
     private final VehicleMapperSupport mapperSupport;
     private final BookingRepository bookingRepository;
     private final InventoryHoldRepository holdRepository;
@@ -45,12 +47,14 @@ public class PublicCatalogService {
     public PublicCatalogService(VehicleRepository vehicleRepository,
                                 VehicleImageRepository imageRepository,
                                 VehiclePricingService pricingService,
+                                BookingPolicyService bookingPolicyService,
                                 VehicleMapperSupport mapperSupport,
                                 BookingRepository bookingRepository,
                                 InventoryHoldRepository holdRepository) {
         this.vehicleRepository = vehicleRepository;
         this.imageRepository = imageRepository;
         this.pricingService = pricingService;
+        this.bookingPolicyService = bookingPolicyService;
         this.mapperSupport = mapperSupport;
         this.bookingRepository = bookingRepository;
         this.holdRepository = holdRepository;
@@ -94,11 +98,12 @@ public class PublicCatalogService {
         Instant now = Instant.now();
         Set<Long> bufferedConflictIds = new HashSet<>();
         if (startTime != null) {
+            int defaultBufferMinutes = bookingPolicyService.resolveDefaultTurnaroundBufferMinutes();
             bufferedConflictIds.addAll(
-                    bookingRepository.findConflictingVehicleIdsWithBuffer(startTime, endTime, NON_BLOCKING_BOOKING_NAMES)
+                    bookingRepository.findConflictingVehicleIdsWithBuffer(startTime, endTime, defaultBufferMinutes, NON_BLOCKING_BOOKING_NAMES)
             );
             bufferedConflictIds.addAll(
-                    holdRepository.findConflictingHoldVehicleIdsWithBuffer(startTime, endTime, now)
+                    holdRepository.findConflictingHoldVehicleIdsWithBuffer(startTime, endTime, defaultBufferMinutes, now)
             );
         }
 

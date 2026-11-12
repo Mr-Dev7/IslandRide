@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.islandride.core.exception.BusinessRuleException;
 import com.islandride.core.exception.ConflictException;
 import com.islandride.core.exception.IdempotencyConflictException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -29,6 +31,7 @@ import java.util.function.Supplier;
 @Service
 public class IdempotencyService {
 
+    private static final Logger log = LoggerFactory.getLogger(IdempotencyService.class);
     private static final int MAX_KEY_LENGTH = 128;
 
     private final IdempotencyRecordRepository repository;
@@ -152,13 +155,27 @@ public class IdempotencyService {
         } catch (DataIntegrityViolationException raceEx) {
             // Another thread inserted the same (scope, actorKey, idempotencyKey) concurrently
             return requiresNewTx.execute(status -> {
+                Instant now = Instant.now();
                 IdempotencyRecord winner = repository.findByScopeAndActorKeyAndIdempotencyKey(scope, actorKey, key)
                         .orElseThrow(() -> new ConflictException("Concurrent idempotency conflict; please retry."));
-                assertSameHash(winner, requestHash);
-                if (winner.getStatus() == IdempotencyStatus.COMPLETED) {
+                boolean expired = winner.getExpiresAt() != null && winner.getExpiresAt().isBefore(now);
+                if (!expired && winner.getStatus() == IdempotencyStatus.COMPLETED) {
+                    assertSameHash(winner, requestHash);
                     return Optional.of(deserializeReplay(winner, responseType));
                 }
-                throw new ConflictException("A concurrent request with this Idempotency-Key is currently being processed.");
+                if (!expired && winner.getStatus() == IdempotencyStatus.IN_PROGRESS) {
+                    assertSameHash(winner, requestHash);
+                    throw new ConflictException("A concurrent request with this Idempotency-Key is currently being processed.");
+                }
+                // Reclaim FAILED or expired concurrent record for retry
+                winner.setRequestHash(requestHash);
+                winner.setStatus(IdempotencyStatus.IN_PROGRESS);
+                winner.setHttpStatus(null);
+                winner.setResourcePublicId(null);
+                winner.setResponseBody(null);
+                winner.setExpiresAt(now.plus(ttl));
+                repository.save(winner);
+                return Optional.empty();
             });
         }
     }
@@ -183,14 +200,19 @@ public class IdempotencyService {
     }
 
     private void markFailed(String scope, String actorKey, String key) {
-        requiresNewTx.executeWithoutResult(status ->
-                repository.findByScopeAndActorKeyAndIdempotencyKey(scope, actorKey, key)
-                        .filter(r -> r.getStatus() == IdempotencyStatus.IN_PROGRESS)
-                        .ifPresent(r -> {
-                            r.setStatus(IdempotencyStatus.FAILED);
-                            repository.save(r);
-                        })
-        );
+        try {
+            requiresNewTx.executeWithoutResult(status ->
+                    repository.findByScopeAndActorKeyAndIdempotencyKey(scope, actorKey, key)
+                            .filter(r -> r.getStatus() == IdempotencyStatus.IN_PROGRESS)
+                            .ifPresent(r -> {
+                                r.setStatus(IdempotencyStatus.FAILED);
+                                repository.save(r);
+                            })
+            );
+        } catch (RuntimeException markEx) {
+            log.warn("Failed to transition idempotency record to FAILED for scope={}, actor={}, key={}: {}",
+                    scope, actorKey, key, markEx.getMessage());
+        }
     }
 
     private static void assertSameHash(IdempotencyRecord existing, String requestHash) {

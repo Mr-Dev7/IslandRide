@@ -29,7 +29,7 @@ public class CustomUserDetailsService implements UserDetailsService {
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
 
         // Resolve active business membership if partner role exists
-        Long businessId = partnerStaffRepository.findByUserIdAndActiveTrue(user.getId())
+        Long businessId = partnerStaffRepository.findFirstByUserIdAndActiveTrueOrderByIdAsc(user.getId())
                 .map(staff -> staff.getBusiness().getId())
                 .orElse(null);
 
@@ -41,7 +41,7 @@ public class CustomUserDetailsService implements UserDetailsService {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with id: " + id));
 
-        Long businessId = partnerStaffRepository.findByUserIdAndActiveTrue(user.getId())
+        Long businessId = partnerStaffRepository.findFirstByUserIdAndActiveTrueOrderByIdAsc(user.getId())
                 .map(staff -> staff.getBusiness().getId())
                 .orElse(null);
 

@@ -59,12 +59,13 @@ public interface InventoryHoldRepository extends JpaRepository<InventoryHold, Lo
             LEFT JOIN partner_policies pp ON pp.business_id = v.business_id
             WHERE h.status = 'HELD'
               AND h.expires_at > :now
-              AND h.start_time < DATE_ADD(:endTime, INTERVAL COALESCE(pp.turnaround_buffer_minutes, 60) MINUTE)
+              AND h.start_time < DATE_ADD(:endTime, INTERVAL COALESCE(v.turnaround_buffer_minutes, pp.turnaround_buffer_minutes, :defaultBufferMinutes) MINUTE)
               AND DATE_ADD(h.end_time, INTERVAL h.turnaround_buffer_minutes MINUTE) > :startTime
             """, nativeQuery = true)
     List<Long> findConflictingHoldVehicleIdsWithBuffer(
             @Param("startTime") Instant startTime,
             @Param("endTime") Instant endTime,
+            @Param("defaultBufferMinutes") int defaultBufferMinutes,
             @Param("now") Instant now
     );
 

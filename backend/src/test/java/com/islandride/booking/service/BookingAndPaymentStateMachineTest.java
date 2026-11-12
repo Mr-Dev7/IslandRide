@@ -84,9 +84,43 @@ class BookingAndPaymentStateMachineTest {
         approved.setPaymentDeadlineAt(now);
 
         assertThatThrownBy(() -> bookingStateMachine.validateTransition(
+                approved, BookingStatus.PENDING_PAYMENT, BookingActorRole.TOURIST, now))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("Payment window deadline has already expired");
+
+        assertThatThrownBy(() -> bookingStateMachine.validateTransition(
                 approved, BookingStatus.CONFIRMED, BookingActorRole.SYSTEM, now))
                 .isInstanceOf(BusinessRuleException.class)
-                .hasMessageContaining("payment window has already expired");
+                .hasMessageContaining("Payment window deadline has already expired");
+
+        Booking pendingPayment = new Booking();
+        pendingPayment.setPublicId("bkg_exp_pending");
+        pendingPayment.setStatus(BookingStatus.PENDING_PAYMENT);
+        pendingPayment.setPaymentDeadlineAt(now.minusSeconds(5));
+
+        assertThatThrownBy(() -> bookingStateMachine.validateTransition(
+                pendingPayment, BookingStatus.CONFIRMED, BookingActorRole.SYSTEM, now))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("Payment window deadline has already expired");
+
+        // System expiry transition remains allowed after payment deadline
+        bookingStateMachine.validateTransition(pendingPayment, BookingStatus.EXPIRED, BookingActorRole.SYSTEM, now);
+
+        Booking failedPayment = new Booking();
+        failedPayment.setPublicId("bkg_exp_failed");
+        failedPayment.setStatus(BookingStatus.PAYMENT_FAILED);
+        failedPayment.setPaymentDeadlineAt(now);
+
+        assertThatThrownBy(() -> bookingStateMachine.validateTransition(
+                failedPayment, BookingStatus.PENDING_PAYMENT, BookingActorRole.TOURIST, now))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("Payment window deadline has already expired");
+
+        // Retries and confirmations remain allowed strictly before paymentDeadlineAt
+        failedPayment.setPaymentDeadlineAt(now.plusSeconds(60));
+        bookingStateMachine.validateTransition(failedPayment, BookingStatus.PENDING_PAYMENT, BookingActorRole.TOURIST, now);
+        failedPayment.setStatus(BookingStatus.PENDING_PAYMENT);
+        bookingStateMachine.validateTransition(failedPayment, BookingStatus.CONFIRMED, BookingActorRole.SYSTEM, now.plusSeconds(10));
     }
 
     @Test

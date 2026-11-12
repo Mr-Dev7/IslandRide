@@ -10,9 +10,9 @@ import java.util.Optional;
 @Repository
 public interface PartnerStaffRepository extends JpaRepository<PartnerStaff, Long> {
 
-    Optional<PartnerStaff> findByUserId(Long userId);
+    List<PartnerStaff> findByUserId(Long userId);
 
-    Optional<PartnerStaff> findByUserIdAndActiveTrue(Long userId);
+    Optional<PartnerStaff> findFirstByUserIdAndActiveTrueOrderByIdAsc(Long userId);
 
     List<PartnerStaff> findAllByUserIdAndActiveTrue(Long userId);
 

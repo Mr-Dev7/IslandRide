@@ -74,5 +74,36 @@ class PaymentGatewayFoundationTest {
         );
         assertThat(mock.verifyCheckoutSignature(order1.gatewayOrderId(), "pay_mock_9", sig)).isTrue();
     }
+
+    @Test
+    void registry_failsFastWhenProviderBlankOrUnregistered() {
+        PaymentGatewayProperties props = new PaymentGatewayProperties();
+        MockGatewayAdapter mock = new MockGatewayAdapter(props);
+        RazorpayGatewayAdapter razorpay = new RazorpayGatewayAdapter(props);
+        PaymentGatewayRegistry registry = new PaymentGatewayRegistry(props, List.of(mock, razorpay));
+
+        props.setProvider("unknown_gw");
+        assertThatThrownBy(registry::getConfiguredAdapter)
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("No payment gateway adapter is registered");
+
+        props.setProvider("   ");
+        assertThatThrownBy(registry::getConfiguredAdapter)
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("must be configured");
+
+        props.setProvider(null);
+        assertThatThrownBy(registry::getConfiguredAdapter)
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("must be configured");
+
+        assertThatThrownBy(() -> registry.getAdapter("stripe"))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("Unsupported payment gateway provider");
+
+        props.setProvider("mock");
+        assertThat(registry.getAdapter("   ").providerCode()).isEqualTo("mock");
+        assertThat(registry.getAdapter("RAZORPAY").providerCode()).isEqualTo("razorpay");
+    }
 }
 

@@ -14,8 +14,8 @@ public class PartnerStaff extends BaseEntity {
     @JoinColumn(name = "business_id", nullable = false)
     private Business business;
 
-    @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", nullable = false, unique = true)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
     @Column(name = "role_in_business", nullable = false, length = 30)

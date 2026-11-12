@@ -93,8 +93,8 @@ public class Vehicle extends SoftDeletableEntity {
     @Column(name = "security_deposit", nullable = false, precision = 10, scale = 2)
     private BigDecimal securityDeposit = BigDecimal.ZERO;
 
-    @Column(name = "turnaround_buffer_minutes", nullable = false)
-    private int turnaroundBufferMinutes = 60;
+    @Column(name = "turnaround_buffer_minutes")
+    private Integer turnaroundBufferMinutes;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "booking_mode", nullable = false, length = 20)
@@ -248,11 +248,11 @@ public class Vehicle extends SoftDeletableEntity {
         this.securityDeposit = securityDeposit;
     }
 
-    public int getTurnaroundBufferMinutes() {
+    public Integer getTurnaroundBufferMinutes() {
         return turnaroundBufferMinutes;
     }
 
-    public void setTurnaroundBufferMinutes(int turnaroundBufferMinutes) {
+    public void setTurnaroundBufferMinutes(Integer turnaroundBufferMinutes) {
         this.turnaroundBufferMinutes = turnaroundBufferMinutes;
     }
 

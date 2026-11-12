@@ -12,6 +12,7 @@ import com.islandride.inventory.repository.VehicleImageRepository;
 import com.islandride.inventory.repository.VehicleStatusHistoryRepository;
 import com.islandride.partner.domain.VerificationStatus;
 import com.islandride.pricing.dto.VehiclePricingOverviewDto;
+import com.islandride.pricing.service.BookingPolicyService;
 import com.islandride.pricing.service.VehiclePricingService;
 import org.springframework.stereotype.Component;
 
@@ -25,17 +26,20 @@ public class VehicleMapperSupport {
     private final VehicleDocumentRepository documentRepository;
     private final VehicleStatusHistoryRepository statusHistoryRepository;
     private final VehiclePricingService pricingService;
+    private final BookingPolicyService bookingPolicyService;
     private final AuditLogRepository auditLogRepository;
 
     public VehicleMapperSupport(VehicleImageRepository imageRepository,
                                 VehicleDocumentRepository documentRepository,
                                 VehicleStatusHistoryRepository statusHistoryRepository,
                                 VehiclePricingService pricingService,
+                                BookingPolicyService bookingPolicyService,
                                 AuditLogRepository auditLogRepository) {
         this.imageRepository = imageRepository;
         this.documentRepository = documentRepository;
         this.statusHistoryRepository = statusHistoryRepository;
         this.pricingService = pricingService;
+        this.bookingPolicyService = bookingPolicyService;
         this.auditLogRepository = auditLogRepository;
     }
 
@@ -84,7 +88,7 @@ public class VehicleMapperSupport {
                 v.getRentalInstructions(),
                 v.getDailyRate(),
                 v.getSecurityDeposit(),
-                v.getTurnaroundBufferMinutes(),
+                bookingPolicyService.resolveTurnaroundBufferMinutes(v),
                 v.getBookingMode().name(),
                 v.getStatus().name(),
                 v.getRejectionReason(),
@@ -159,7 +163,7 @@ public class VehicleMapperSupport {
                 v.getRentalInstructions(),
                 v.getDailyRate(),
                 v.getSecurityDeposit(),
-                v.getTurnaroundBufferMinutes(),
+                bookingPolicyService.resolveTurnaroundBufferMinutes(v),
                 v.getBookingMode().name(),
                 v.getStatus().name(),
                 v.getRejectionReason(),
@@ -243,7 +247,7 @@ public class VehicleMapperSupport {
                 v.getVehicleCondition().name(),
                 v.getRentalInstructions(),
                 v.getBookingMode().name(),
-                v.getTurnaroundBufferMinutes(),
+                bookingPolicyService.resolveTurnaroundBufferMinutes(v),
                 v.getBusiness().getPublicId(),
                 v.getBusiness().getTradeName(),
                 v.getBusiness().getVerificationStatus() == VerificationStatus.APPROVED,

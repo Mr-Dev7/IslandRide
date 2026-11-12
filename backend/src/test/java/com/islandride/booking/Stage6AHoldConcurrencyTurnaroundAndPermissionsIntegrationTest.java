@@ -4,6 +4,9 @@ import com.islandride.administration.repository.AuditLogRepository;
 import com.islandride.availability.domain.HoldPurpose;
 import com.islandride.availability.domain.HoldStatus;
 import com.islandride.availability.domain.InventoryHold;
+import com.islandride.availability.dto.CreateAvailabilityBlockRequest;
+import com.islandride.availability.dto.PublicAvailabilitySlotDto;
+import com.islandride.availability.dto.VehicleAvailabilityCalendarDto;
 import com.islandride.availability.repository.InventoryHoldRepository;
 import com.islandride.availability.service.AvailabilityService;
 import com.islandride.availability.service.InventoryHoldService;
@@ -20,6 +23,11 @@ import com.islandride.core.exception.BusinessRuleException;
 import com.islandride.core.exception.ConflictException;
 import com.islandride.core.exception.IdempotencyConflictException;
 import com.islandride.core.exception.InvalidStateTransitionException;
+import com.islandride.core.idempotency.IdempotencyCleanupScheduler;
+import com.islandride.core.idempotency.IdempotencyRecord;
+import com.islandride.core.idempotency.IdempotencyRecordRepository;
+import com.islandride.core.idempotency.IdempotencyService;
+import com.islandride.core.idempotency.IdempotencyStatus;
 import com.islandride.core.security.TenantSecurityService;
 import com.islandride.core.security.UserPrincipal;
 import com.islandride.geography.domain.Island;
@@ -48,7 +56,10 @@ import com.islandride.partner.repository.BusinessLocationRepository;
 import com.islandride.partner.repository.BusinessRepository;
 import com.islandride.partner.repository.PartnerStaffRepository;
 import com.islandride.pricing.domain.PartnerOperatingHours;
+import com.islandride.pricing.domain.PartnerPolicy;
 import com.islandride.pricing.repository.PartnerOperatingHoursRepository;
+import com.islandride.pricing.repository.PartnerPolicyRepository;
+import com.islandride.pricing.service.BookingPolicyService;
 import com.islandride.pricing.service.OperatingHoursService;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
@@ -122,6 +133,16 @@ class Stage6AHoldConcurrencyTurnaroundAndPermissionsIntegrationTest {
     private VehicleRepository vehicleRepository;
     @Autowired
     private PasswordEncoder passwordEncoder;
+    @Autowired
+    private BookingPolicyService bookingPolicyService;
+    @Autowired
+    private PartnerPolicyRepository partnerPolicyRepository;
+    @Autowired
+    private IdempotencyRecordRepository idempotencyRecordRepository;
+    @Autowired
+    private IdempotencyService idempotencyService;
+    @Autowired
+    private IdempotencyCleanupScheduler idempotencyCleanupScheduler;
     @Autowired
     private PlatformTransactionManager transactionManager;
     @Autowired
@@ -503,6 +524,473 @@ class Stage6AHoldConcurrencyTurnaroundAndPermissionsIntegrationTest {
         }
     }
 
+    @Test
+    void concurrentHoldAcquisition_50ThreadsOverlappingSameVehicleAllowsExactlyOneWinner() throws Exception {
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+        Fixture fx = tx.execute(s -> createCommittedFixture());
+        assertThat(fx).isNotNull();
+
+        int threadCount = 50;
+        List<Long> touristIds = tx.execute(s -> {
+            List<Long> ids = new ArrayList<>(threadCount);
+            for (int i = 0; i < threadCount; i++) {
+                ids.add(createUser("ROLE_TOURIST", "race50_" + i).getId());
+            }
+            return ids;
+        });
+
+        try {
+            LocalDate targetDay = LocalDate.now(IST).plusDays(11);
+            Instant start = ZonedDateTime.of(targetDay, LocalTime.of(9, 0), IST).toInstant();
+            Instant end = ZonedDateTime.of(targetDay, LocalTime.of(17, 0), IST).toInstant();
+
+            ExecutorService pool = Executors.newFixedThreadPool(threadCount);
+            CountDownLatch ready = new CountDownLatch(threadCount);
+            CountDownLatch go = new CountDownLatch(1);
+            AtomicInteger successes = new AtomicInteger();
+            AtomicInteger conflicts = new AtomicInteger();
+            List<Throwable> unexpectedErrors = new CopyOnWriteArrayList<>();
+
+            List<Future<?>> futures = new ArrayList<>(threadCount);
+            for (int i = 0; i < threadCount; i++) {
+                final Long userId = touristIds.get(i);
+                final String idemKey = "race50-idem-" + i + "-" + UUID.randomUUID();
+                futures.add(pool.submit(() -> {
+                    ready.countDown();
+                    try {
+                        go.await(15, TimeUnit.SECONDS);
+                        holdService.acquireHold(new InventoryHoldService.AcquireHoldCommand(
+                                userId, fx.vehiclePublicId(), start, end,
+                                HoldPurpose.CHECKOUT, null, null, idemKey
+                        ));
+                        successes.incrementAndGet();
+                    } catch (ConflictException ex) {
+                        conflicts.incrementAndGet();
+                    } catch (Throwable t) {
+                        unexpectedErrors.add(t);
+                    }
+                }));
+            }
+
+            assertThat(ready.await(15, TimeUnit.SECONDS)).isTrue();
+            go.countDown();
+            for (Future<?> f : futures) {
+                f.get(45, TimeUnit.SECONDS);
+            }
+            pool.shutdownNow();
+
+            assertThat(unexpectedErrors).isEmpty();
+            assertThat(successes.get()).isEqualTo(1);
+            assertThat(conflicts.get()).isEqualTo(threadCount - 1);
+            assertThat(holdRepository.findByVehicleId(fx.vehicleId()).stream()
+                    .filter(h -> h.getStatus() == HoldStatus.HELD)
+                    .count()).isEqualTo(1L);
+        } finally {
+            cleanupFixture(fx, touristIds);
+        }
+    }
+
+    @Test
+    void concurrentHoldAcquisition_concurrentNonOverlappingWindowsAllSucceedWithoutFalseConflict() throws Exception {
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+        Fixture fx = tx.execute(s -> createCommittedFixture());
+        assertThat(fx).isNotNull();
+
+        int threadCount = 8;
+        List<Long> touristIds = tx.execute(s -> {
+            List<Long> ids = new ArrayList<>(threadCount);
+            for (int i = 0; i < threadCount; i++) {
+                ids.add(createUser("ROLE_TOURIST", "disjoint_" + i).getId());
+            }
+            return ids;
+        });
+
+        try {
+            // Mix same-day non-overlapping slots (separated by >= 60m buffer) AND different-day slots on the same vehicle
+            LocalDate dayA = LocalDate.now(IST).plusDays(15);
+            LocalDate dayB = LocalDate.now(IST).plusDays(16);
+            LocalDate dayC = LocalDate.now(IST).plusDays(17);
+            LocalDate dayD = LocalDate.now(IST).plusDays(18);
+            LocalDate dayE = LocalDate.now(IST).plusDays(19);
+            LocalDate dayF = LocalDate.now(IST).plusDays(20);
+            LocalDate dayG = LocalDate.now(IST).plusDays(21);
+
+            List<Instant[]> windows = List.of(
+                    new Instant[]{ZonedDateTime.of(dayA, LocalTime.of(8, 30), IST).toInstant(), ZonedDateTime.of(dayA, LocalTime.of(10, 30), IST).toInstant()},
+                    new Instant[]{ZonedDateTime.of(dayA, LocalTime.of(11, 30), IST).toInstant(), ZonedDateTime.of(dayA, LocalTime.of(13, 30), IST).toInstant()},
+                    new Instant[]{ZonedDateTime.of(dayB, LocalTime.of(9, 0), IST).toInstant(), ZonedDateTime.of(dayB, LocalTime.of(17, 0), IST).toInstant()},
+                    new Instant[]{ZonedDateTime.of(dayC, LocalTime.of(9, 0), IST).toInstant(), ZonedDateTime.of(dayC, LocalTime.of(17, 0), IST).toInstant()},
+                    new Instant[]{ZonedDateTime.of(dayD, LocalTime.of(9, 0), IST).toInstant(), ZonedDateTime.of(dayD, LocalTime.of(17, 0), IST).toInstant()},
+                    new Instant[]{ZonedDateTime.of(dayE, LocalTime.of(9, 0), IST).toInstant(), ZonedDateTime.of(dayE, LocalTime.of(17, 0), IST).toInstant()},
+                    new Instant[]{ZonedDateTime.of(dayF, LocalTime.of(9, 0), IST).toInstant(), ZonedDateTime.of(dayF, LocalTime.of(17, 0), IST).toInstant()},
+                    new Instant[]{ZonedDateTime.of(dayG, LocalTime.of(9, 0), IST).toInstant(), ZonedDateTime.of(dayG, LocalTime.of(17, 0), IST).toInstant()}
+            );
+
+            ExecutorService pool = Executors.newFixedThreadPool(threadCount);
+            CountDownLatch ready = new CountDownLatch(threadCount);
+            CountDownLatch go = new CountDownLatch(1);
+            AtomicInteger successes = new AtomicInteger();
+            AtomicInteger conflicts = new AtomicInteger();
+            List<Throwable> unexpectedErrors = new CopyOnWriteArrayList<>();
+
+            List<Future<?>> futures = new ArrayList<>(threadCount);
+            for (int i = 0; i < threadCount; i++) {
+                final Long userId = touristIds.get(i);
+                final Instant winStart = windows.get(i)[0];
+                final Instant winEnd = windows.get(i)[1];
+                final String idemKey = "disjoint-idem-" + i + "-" + UUID.randomUUID();
+                futures.add(pool.submit(() -> {
+                    ready.countDown();
+                    try {
+                        go.await(15, TimeUnit.SECONDS);
+                        holdService.acquireHold(new InventoryHoldService.AcquireHoldCommand(
+                                userId, fx.vehiclePublicId(), winStart, winEnd,
+                                HoldPurpose.CHECKOUT, null, null, idemKey
+                        ));
+                        successes.incrementAndGet();
+                    } catch (ConflictException ex) {
+                        conflicts.incrementAndGet();
+                    } catch (Throwable t) {
+                        unexpectedErrors.add(t);
+                    }
+                }));
+            }
+
+            assertThat(ready.await(15, TimeUnit.SECONDS)).isTrue();
+            go.countDown();
+            for (Future<?> f : futures) {
+                f.get(30, TimeUnit.SECONDS);
+            }
+            pool.shutdownNow();
+
+            assertThat(unexpectedErrors).isEmpty();
+            assertThat(conflicts.get()).isZero();
+            assertThat(successes.get()).isEqualTo(threadCount);
+            assertThat(holdRepository.findByVehicleId(fx.vehicleId()).stream()
+                    .filter(h -> h.getStatus() == HoldStatus.HELD)
+                    .count()).isEqualTo(threadCount);
+        } finally {
+            cleanupFixture(fx, touristIds);
+        }
+    }
+
+    @Test
+    void turnaroundBuffer_vehicleAndPartnerOverridesEnforceReverseGapCalendarAndBlockConflicts() {
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+        Fixture fx = tx.execute(s -> createCommittedFixture());
+        assertThat(fx).isNotNull();
+
+        try {
+            // Configure partner policy buffer = 90m (overrides default 60m), then vehicle buffer = 120m (overrides partner 90m)
+            tx.executeWithoutResult(s -> {
+                PartnerPolicy pp = new PartnerPolicy();
+                pp.setBusiness(businessRepository.getReferenceById(fx.businessId()));
+                pp.setTurnaroundBufferMinutes(90);
+                partnerPolicyRepository.save(pp);
+            });
+            Vehicle partnerResolvedVehicle = tx.execute(s -> {
+                Vehicle v = vehicleRepository.findById(fx.vehicleId()).orElseThrow();
+                v.getBusiness().getId();
+                return v;
+            });
+            assertThat(bookingPolicyService.resolveTurnaroundBufferMinutes(partnerResolvedVehicle)).isEqualTo(90);
+
+            tx.executeWithoutResult(s -> {
+                Vehicle v = vehicleRepository.findById(fx.vehicleId()).orElseThrow();
+                v.setTurnaroundBufferMinutes(120);
+                vehicleRepository.save(v);
+            });
+            Vehicle vehicleOverrideLoaded = tx.execute(s -> {
+                Vehicle v = vehicleRepository.findById(fx.vehicleId()).orElseThrow();
+                v.getBusiness().getId();
+                return v;
+            });
+            assertThat(bookingPolicyService.resolveTurnaroundBufferMinutes(vehicleOverrideLoaded)).isEqualTo(120);
+
+            LocalDate targetDay = LocalDate.now(IST).plusDays(9);
+            Instant bookStart = ZonedDateTime.of(targetDay, LocalTime.of(12, 0), IST).toInstant();
+            Instant bookEnd = ZonedDateTime.of(targetDay, LocalTime.of(14, 0), IST).toInstant();
+
+            tx.executeWithoutResult(s -> {
+                Booking b = new Booking();
+                b.setBookingReference("IR-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase());
+                b.setUser(userRepository.getReferenceById(fx.touristId()));
+                b.setVehicle(vehicleRepository.getReferenceById(fx.vehicleId()));
+                b.setBusiness(businessRepository.getReferenceById(fx.businessId()));
+                b.setPickupLocation(locationRepository.getReferenceById(fx.pickupLocationId()));
+                b.setReturnLocation(locationRepository.getReferenceById(fx.pickupLocationId()));
+                b.setStartTime(bookStart);
+                b.setEndTime(bookEnd);
+                b.setTotalDays(1);
+                b.setDailyRate(new BigDecimal("1000.00"));
+                b.setBaseRentalAmount(new BigDecimal("1000.00"));
+                b.setTotalPayableAmount(new BigDecimal("1050.00"));
+                b.setTurnaroundBufferMinutes(120);
+                b.setStatus(BookingStatus.CONFIRMED);
+                b.setPaymentMode(PaymentMode.FULL);
+                b.setBookingMode(BookingMode.INSTANT);
+                bookingRepository.save(b);
+            });
+
+            // Reverse turnaround check BEFORE existing booking (12:00):
+            // 08:30 -> 10:01 ends 119m before 12:00 (< 120m buffer!) -> BLOCKED across Availability, Catalog, Hold
+            Instant beforeGap119Start = bookStart.minus(210, ChronoUnit.MINUTES); // 08:30 IST
+            Instant beforeGap119End = bookStart.minus(119, ChronoUnit.MINUTES);   // 10:01 IST
+
+            assertThat(availabilityService.isVehicleAvailable(fx.vehicleId(), beforeGap119Start, beforeGap119End)).isFalse();
+            assertThat(publicCatalogService.searchVehicles(
+                    fx.islandId(), null, null, null, null, null, null, fx.vehicleUniqueToken(),
+                    null, null, null, null, null, null, beforeGap119Start, beforeGap119End, null, 0, 10
+            ).content()).isEmpty();
+            assertThatThrownBy(() -> holdService.acquireHold(new InventoryHoldService.AcquireHoldCommand(
+                    fx.touristId(), fx.vehiclePublicId(), beforeGap119Start, beforeGap119End,
+                    HoldPurpose.CHECKOUT, null, null, "rev-119-" + UUID.randomUUID())))
+                    .isInstanceOf(ConflictException.class);
+
+            // Exact 120m reverse gap: 08:30 -> 10:00 IST -> ALLOWED!
+            Instant beforeGap120Start = bookStart.minus(210, ChronoUnit.MINUTES); // 08:30 IST
+            Instant beforeGap120End = bookStart.minus(120, ChronoUnit.MINUTES);   // 10:00 IST
+            assertThat(availabilityService.isVehicleAvailable(fx.vehicleId(), beforeGap120Start, beforeGap120End)).isTrue();
+            InventoryHoldService.HoldResult reverseOk = holdService.acquireHold(new InventoryHoldService.AcquireHoldCommand(
+                    fx.touristId(), fx.vehiclePublicId(), beforeGap120Start, beforeGap120End,
+                    HoldPurpose.CHECKOUT, null, null, "rev-120-" + UUID.randomUUID()));
+            assertThat(reverseOk.turnaroundBufferMinutes()).isEqualTo(120);
+
+            // Forward 120m customer turnaround check AFTER existing booking (14:00 -> +119m blocked, +120m allowed)
+            Instant afterGap119Start = bookEnd.plus(119, ChronoUnit.MINUTES); // 15:59 IST (< 14:00 + 120m = 16:00)
+            Instant afterGap119End = bookEnd.plus(240, ChronoUnit.MINUTES);
+            assertThat(availabilityService.isVehicleAvailable(fx.vehicleId(), afterGap119Start, afterGap119End)).isFalse();
+            assertThat(availabilityService.isVehicleAvailable(fx.vehicleId(), bookEnd.plus(120, ChronoUnit.MINUTES), afterGap119End)).isTrue();
+
+            // Partner createBlock directly overlapping active booking throws ConflictException, while maintenance at exact return boundary succeeds
+            User owner = userRepository.findById(fx.ownerId()).orElseThrow();
+            setPrincipal(owner, fx.businessId());
+            assertThatThrownBy(() -> availabilityService.createBlock(
+                    fx.vehiclePublicId(),
+                    new CreateAvailabilityBlockRequest(
+                            bookEnd.minusSeconds(1), afterGap119End, "MAINTENANCE", "Overlapping service", null, null, true)))
+                    .isInstanceOf(ConflictException.class);
+            availabilityService.createBlock(
+                    fx.vehiclePublicId(),
+                    new CreateAvailabilityBlockRequest(
+                            bookEnd.plus(120, ChronoUnit.MINUTES), afterGap119End, "MAINTENANCE", "Oil service", null, null, true));
+
+            // Calendar query exposes BOOKED, HOLD, MAINTENANCE, and TURNAROUND_BUFFER slots
+            VehicleAvailabilityCalendarDto calendar = availabilityService.getPublicAvailability(
+                    fx.vehiclePublicId(),
+                    ZonedDateTime.of(targetDay, LocalTime.of(8, 0), IST).toInstant(),
+                    ZonedDateTime.of(targetDay, LocalTime.of(18, 0), IST).toInstant()
+            );
+            assertThat(calendar.unavailableSlots())
+                    .extracting(PublicAvailabilitySlotDto::slotType)
+                    .contains("BOOKED", "HOLD", "MAINTENANCE", "TURNAROUND_BUFFER");
+        } finally {
+            SecurityContextHolder.clearContext();
+            cleanupFixture(fx, List.of());
+        }
+    }
+
+    @Test
+    void operatingHours_rejectsInactivePickupAndReturnLocations() {
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+        Fixture fx = tx.execute(s -> createCommittedFixture());
+        assertThat(fx).isNotNull();
+
+        Location inactiveLocation = tx.execute(s -> {
+            Location loc = new Location();
+            loc.setIsland(islandRepository.findById(fx.islandId()).orElseThrow());
+            loc.setName("Closed Jetty Hub " + UUID.randomUUID().toString().substring(0, 6));
+            loc.setCode("CLJ_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase());
+            loc.setAddress("Closed Jetty Road, Port Blair");
+            loc.setActive(false);
+            return locationRepository.save(loc);
+        });
+        assertThat(inactiveLocation).isNotNull();
+
+        try {
+            Vehicle vehicle = tx.execute(s -> {
+                Vehicle v = vehicleRepository.findById(fx.vehicleId()).orElseThrow();
+                v.getIsland().getId();
+                v.getBusiness().getId();
+                v.getPickupLocation().getId();
+                v.getReturnLocation().getId();
+                return v;
+            });
+
+            LocalDate nextMonday = nextDayOfWeek(DayOfWeek.MONDAY);
+            Instant mondayStart = ZonedDateTime.of(nextMonday, LocalTime.of(10, 0), IST).toInstant();
+            Instant mondayEnd = ZonedDateTime.of(nextMonday, LocalTime.of(14, 0), IST).toInstant();
+
+            assertThatThrownBy(() -> operatingHoursService.validateLocationsAndOperatingHours(
+                    vehicle, inactiveLocation, null, mondayStart, mondayEnd))
+                    .isInstanceOf(BusinessRuleException.class)
+                    .hasMessageContaining("Pickup location is currently inactive");
+
+            assertThatThrownBy(() -> operatingHoursService.validateLocationsAndOperatingHours(
+                    vehicle, null, inactiveLocation, mondayStart, mondayEnd))
+                    .isInstanceOf(BusinessRuleException.class)
+                    .hasMessageContaining("Return location is currently inactive");
+        } finally {
+            tx.executeWithoutResult(s -> locationRepository.deleteById(inactiveLocation.getId()));
+            cleanupFixture(fx, List.of());
+        }
+    }
+
+    @Test
+    void tenantSecurityService_respectsExplicitFalseStaffFlagsAndValidatesAdminBusinessState() {
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+        Fixture fx = tx.execute(s -> createCommittedFixture());
+        assertThat(fx).isNotNull();
+
+        List<Long> extraUserIds = new ArrayList<>();
+        final Long[] pendingBizIdHolder = new Long[1];
+        final Long[] deletedBizIdHolder = new Long[1];
+
+        try {
+            User restrictedManager = tx.execute(s -> {
+                User u = createUser("ROLE_PARTNER_MANAGER", "mgrRestrict");
+                PartnerStaff ps = new PartnerStaff();
+                ps.setBusiness(businessRepository.getReferenceById(fx.businessId()));
+                ps.setUser(u);
+                ps.setRoleInBusiness("MANAGER");
+                ps.setActive(true);
+                ps.setCanRecordHandover(false);
+                ps.setCanCollectOfflinePayments(false);
+                ps.setCanMarkNoShow(true);
+                staffRepository.save(ps);
+                return u;
+            });
+            extraUserIds.add(restrictedManager.getId());
+
+            // Explicit false operational flags MUST override MANAGER role defaults
+            setPrincipal(restrictedManager, fx.businessId());
+            assertThat(tenantSecurityService.canApproveOrRejectBookings(fx.businessId())).isTrue();
+            assertThat(tenantSecurityService.canRecordHandover(fx.businessId())).isFalse();
+            assertThat(tenantSecurityService.canCollectOfflinePayments(fx.businessId())).isFalse();
+            assertThat(tenantSecurityService.canMarkNoShow(fx.businessId())).isTrue();
+
+            User opsAdmin = tx.execute(s -> createUser("ROLE_OPERATIONS_ADMIN", "opsCheck"));
+            extraUserIds.add(opsAdmin.getId());
+
+            // Create PENDING (unapproved) and soft-deleted businesses
+            tx.executeWithoutResult(s -> {
+                User ownerRef = userRepository.getReferenceById(fx.ownerId());
+                Business pendingBiz = new Business();
+                pendingBiz.setOwnerUser(ownerRef);
+                pendingBiz.setLegalName("Pending Test Fleet");
+                pendingBiz.setTradeName("Pending Fleet");
+                pendingBiz.setVerificationStatus(VerificationStatus.UNDER_REVIEW);
+                pendingBizIdHolder[0] = businessRepository.save(pendingBiz).getId();
+
+                Business deletedBiz = new Business();
+                deletedBiz.setOwnerUser(ownerRef);
+                deletedBiz.setLegalName("Deleted Test Fleet");
+                deletedBiz.setTradeName("Deleted Fleet");
+                deletedBiz.setVerificationStatus(VerificationStatus.APPROVED);
+                deletedBiz.softDelete();
+                deletedBizIdHolder[0] = businessRepository.save(deletedBiz).getId();
+            });
+
+            setPrincipal(opsAdmin, null);
+            // Admin oversight is permitted for existing non-deleted business (even unapproved)...
+            assertThat(tenantSecurityService.hasBusinessAccess(pendingBizIdHolder[0])).isTrue();
+            assertThat(tenantSecurityService.hasBusinessManagementAccess(pendingBizIdHolder[0])).isTrue();
+            // ...but booking/operational approvals are blocked while business is unapproved!
+            assertThat(tenantSecurityService.canApproveOrRejectBookings(pendingBizIdHolder[0])).isFalse();
+            assertThat(tenantSecurityService.canRecordHandover(pendingBizIdHolder[0])).isFalse();
+            assertThatThrownBy(() -> tenantSecurityService.requireBookingApprovalAccess(pendingBizIdHolder[0]))
+                    .isInstanceOf(AccessDeniedException.class);
+
+            // Deleted or non-existent businesses are rejected even for admins
+            assertThat(tenantSecurityService.hasBusinessAccess(deletedBizIdHolder[0])).isFalse();
+            assertThat(tenantSecurityService.hasBusinessManagementAccess(deletedBizIdHolder[0])).isFalse();
+            assertThat(tenantSecurityService.hasBusinessAccess(999_999_999L)).isFalse();
+            assertThat(tenantSecurityService.hasBusinessManagementAccess(999_999_999L)).isFalse();
+        } finally {
+            SecurityContextHolder.clearContext();
+            tx.executeWithoutResult(s -> {
+                if (pendingBizIdHolder[0] != null) {
+                    businessRepository.deleteById(pendingBizIdHolder[0]);
+                }
+                if (deletedBizIdHolder[0] != null) {
+                    entityManager.createNativeQuery("DELETE FROM businesses WHERE id = :id")
+                            .setParameter("id", deletedBizIdHolder[0])
+                            .executeUpdate();
+                }
+            });
+            cleanupFixture(fx, extraUserIds);
+        }
+    }
+
+    @Test
+    void idempotency_usesCanonicalUsrPrefixReclaimsFailedOrExpiredAndCleanupPurgesExpiredOnly() {
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+        Fixture fx = tx.execute(s -> createCommittedFixture());
+        assertThat(fx).isNotNull();
+
+        try {
+            LocalDate targetDay = LocalDate.now(IST).plusDays(12);
+            Instant start = ZonedDateTime.of(targetDay, LocalTime.of(9, 0), IST).toInstant();
+            Instant end = ZonedDateTime.of(targetDay, LocalTime.of(14, 0), IST).toInstant();
+
+            // Acquire hold first on [09:00, 14:00], then fail a hold on overlapping [10:00, 15:00] with key K2
+            holdService.acquireHold(new InventoryHoldService.AcquireHoldCommand(
+                    fx.touristId(), fx.vehiclePublicId(), start, end, HoldPurpose.CHECKOUT, null, null, "idem-canon-1-" + UUID.randomUUID()
+            ));
+            String expectedActorKey = IdempotencyService.actorKeyForUser(fx.touristId());
+            assertThat(expectedActorKey).startsWith("usr:");
+
+            String reclaimKey = "idem-reclaim-" + UUID.randomUUID();
+            assertThatThrownBy(() -> holdService.acquireHold(new InventoryHoldService.AcquireHoldCommand(
+                    fx.touristId(), fx.vehiclePublicId(),
+                    start.plus(1, ChronoUnit.HOURS), end.plus(1, ChronoUnit.HOURS),
+                    HoldPurpose.CHECKOUT, null, null, reclaimKey)))
+                    .isInstanceOf(ConflictException.class);
+
+            IdempotencyRecord failedRecord = idempotencyRecordRepository
+                    .findByScopeAndActorKeyAndIdempotencyKey("INVENTORY_HOLD_ACQUIRE", expectedActorKey, reclaimKey)
+                    .orElseThrow();
+            assertThat(failedRecord.getStatus()).isEqualTo(IdempotencyStatus.FAILED);
+
+            // Reusing reclaimKey on a valid non-conflicting window succeeds by reclaiming the FAILED record
+            Instant validStart = ZonedDateTime.of(targetDay.plusDays(1), LocalTime.of(9, 0), IST).toInstant();
+            Instant validEnd = ZonedDateTime.of(targetDay.plusDays(1), LocalTime.of(14, 0), IST).toInstant();
+            InventoryHoldService.HoldResult reclaimed = holdService.acquireHold(new InventoryHoldService.AcquireHoldCommand(
+                    fx.touristId(), fx.vehiclePublicId(), validStart, validEnd,
+                    HoldPurpose.CHECKOUT, null, null, reclaimKey));
+            assertThat(reclaimed.status()).isEqualTo(HoldStatus.HELD);
+
+            IdempotencyRecord completedRecord = idempotencyRecordRepository
+                    .findByScopeAndActorKeyAndIdempotencyKey("INVENTORY_HOLD_ACQUIRE", expectedActorKey, reclaimKey)
+                    .orElseThrow();
+            assertThat(completedRecord.getStatus()).isEqualTo(IdempotencyStatus.COMPLETED);
+
+            // Mark an expired record and verify scheduler purges only expired records while keeping active ones
+            String expiredKey = "idem-exp-" + UUID.randomUUID();
+            tx.executeWithoutResult(s -> {
+                IdempotencyRecord exp = new IdempotencyRecord();
+                exp.setScope("INVENTORY_HOLD_ACQUIRE");
+                exp.setActorKey(expectedActorKey);
+                exp.setIdempotencyKey(expiredKey);
+                exp.setRequestHash("b".repeat(64));
+                exp.setStatus(IdempotencyStatus.COMPLETED);
+                exp.setExpiresAt(Instant.now().minusSeconds(60));
+                idempotencyRecordRepository.save(exp);
+            });
+
+            int purged = idempotencyCleanupScheduler.cleanupExpiredRecords();
+            assertThat(purged).isGreaterThanOrEqualTo(1);
+            assertThat(idempotencyRecordRepository
+                    .findByScopeAndActorKeyAndIdempotencyKey("INVENTORY_HOLD_ACQUIRE", expectedActorKey, expiredKey))
+                    .isEmpty();
+            assertThat(idempotencyRecordRepository
+                    .findByScopeAndActorKeyAndIdempotencyKey("INVENTORY_HOLD_ACQUIRE", expectedActorKey, reclaimKey))
+                    .isPresent();
+        } finally {
+            cleanupFixture(fx, List.of());
+        }
+    }
+
     private void cleanupFixture(Fixture fx, List<Long> extraUserIds) {
         if (fx == null) {
             return;
@@ -513,7 +1001,9 @@ class Stage6AHoldConcurrencyTurnaroundAndPermissionsIntegrationTest {
         if (extraUserIds != null) {
             allUserIds.addAll(extraUserIds);
         }
-        List<String> actorKeys = allUserIds.stream().map(id -> "user:" + id).toList();
+        List<String> actorKeys = allUserIds.stream()
+                .flatMap(id -> java.util.stream.Stream.of("usr:" + id, "user:" + id))
+                .toList();
 
         new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
             List<String> bookingPublicIds = entityManager.createQuery(
@@ -539,10 +1029,16 @@ class Stage6AHoldConcurrencyTurnaroundAndPermissionsIntegrationTest {
             entityManager.createQuery("DELETE FROM InventoryHold h WHERE h.vehicle.id = :vid")
                     .setParameter("vid", fx.vehicleId())
                     .executeUpdate();
+            entityManager.createQuery("DELETE FROM VehicleUnavailability u WHERE u.vehicle.id = :vid")
+                    .setParameter("vid", fx.vehicleId())
+                    .executeUpdate();
             entityManager.createQuery("DELETE FROM IdempotencyRecord r WHERE r.actorKey IN :keys")
                     .setParameter("keys", actorKeys)
                     .executeUpdate();
             entityManager.createQuery("DELETE FROM PartnerOperatingHours o WHERE o.business.id = :bid")
+                    .setParameter("bid", fx.businessId())
+                    .executeUpdate();
+            entityManager.createQuery("DELETE FROM PartnerPolicy pp WHERE pp.business.id = :bid")
                     .setParameter("bid", fx.businessId())
                     .executeUpdate();
             vehicleRepository.deleteById(fx.vehicleId());

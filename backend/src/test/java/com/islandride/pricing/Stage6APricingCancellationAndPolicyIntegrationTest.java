@@ -1,5 +1,7 @@
 package com.islandride.pricing;
 
+import com.islandride.administration.domain.SystemSetting;
+import com.islandride.administration.repository.SystemSettingRepository;
 import com.islandride.booking.domain.*;
 import com.islandride.booking.repository.BookingRepository;
 import com.islandride.booking.service.CancellationPolicySnapshot;
@@ -88,6 +90,8 @@ class Stage6APricingCancellationAndPolicyIntegrationTest {
     private BookingRepository bookingRepository;
     @Autowired
     private PartnerReceivableRepository receivableRepository;
+    @Autowired
+    private SystemSettingRepository systemSettingRepository;
     @Autowired
     private PasswordEncoder passwordEncoder;
 
@@ -417,6 +421,227 @@ class Stage6APricingCancellationAndPolicyIntegrationTest {
         PartnerReceivable receivable = receivableRepository.findByBookingId(booking.getId()).orElseThrow();
         assertThat(receivable.getAmountDueFromPartner()).isEqualByComparingTo("30.00");
         assertThat(receivable.getStatus()).isEqualTo(ReceivableStatus.OPEN);
+    }
+
+    @Test
+    void bookingPolicy_respectsAdminSystemSettingUpdatesPrecedenceAndFailsFastWhenMissing() {
+        TestEntities fx = createBaseEntities();
+
+        // Admin updates V8 settings — partial PartnerPolicy with null overrides must inherit them immediately
+        updateSystemSetting(BookingPolicyService.KEY_TURNAROUND_BUFFER_MINUTES, "75");
+        updateSystemSetting(BookingPolicyService.KEY_ADVANCE_PAYMENT_PERCENT, "30.00");
+        updateSystemSetting(BookingPolicyService.KEY_COMMISSION_PERCENT, "12.50");
+        updateSystemSetting(BookingPolicyService.KEY_HOLD_DURATION_SECONDS, "900");
+        updateSystemSetting(BookingPolicyService.KEY_APPROVAL_GT_24H_HOURS, "8");
+
+        EffectiveBookingPolicy systemPolicy = bookingPolicyService.resolvePolicy(fx.vehicle());
+        assertThat(systemPolicy.turnaroundBufferMinutes()).isEqualTo(75);
+        assertThat(systemPolicy.advancePaymentPercentage()).isEqualByComparingTo("30.00");
+        assertThat(systemPolicy.commissionPercentage()).isEqualByComparingTo("12.50");
+        assertThat(systemPolicy.holdDurationSeconds()).isEqualTo(900);
+        assertThat(systemPolicy.approvalWindowGt24hHours()).isEqualTo(8);
+
+        // Partial partner policy overrides advance payment ONLY; leaves turnaround buffer null -> inherits 75
+        PartnerPolicy pp = new PartnerPolicy();
+        pp.setBusiness(fx.business());
+        pp.setAdvancePaymentPercentage(new BigDecimal("40.00"));
+        partnerPolicyRepository.saveAndFlush(pp);
+
+        EffectiveBookingPolicy partnerResolved = bookingPolicyService.resolvePolicy(fx.vehicle());
+        assertThat(partnerResolved.advancePaymentPercentage()).isEqualByComparingTo("40.00");
+        assertThat(partnerResolved.turnaroundBufferMinutes()).isEqualTo(75);
+
+        // Partner buffer 90 overrides system 75; vehicle buffer 105 overrides partner 90
+        pp.setTurnaroundBufferMinutes(90);
+        partnerPolicyRepository.saveAndFlush(pp);
+        assertThat(bookingPolicyService.resolveTurnaroundBufferMinutes(fx.vehicle())).isEqualTo(90);
+
+        fx.vehicle().setTurnaroundBufferMinutes(105);
+        vehicleRepository.saveAndFlush(fx.vehicle());
+        EffectiveBookingPolicy vehicleResolved = bookingPolicyService.resolvePolicy(fx.vehicle());
+        assertThat(vehicleResolved.turnaroundBufferMinutes()).isEqualTo(105);
+        assertThat(bookingPolicyService.resolveTurnaroundBufferMinutes(fx.vehicle())).isEqualTo(105);
+
+        // Missing required setting fails fast instead of silently falling back
+        SystemSetting setting = systemSettingRepository
+                .findBySettingKey(BookingPolicyService.KEY_COMMISSION_PERCENT)
+                .orElseThrow();
+        systemSettingRepository.delete(setting);
+        systemSettingRepository.flush();
+
+        assertThatThrownBy(() -> bookingPolicyService.resolvePolicy(fx.vehicle()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Missing or blank required system setting");
+    }
+
+    @Test
+    void authoritativePricing_resolvesPlanByStartTimeAlignsOvernightSeasonAndUsesTwoDecimalMultiplier() {
+        TestEntities fx = createBaseEntities();
+        Instant now = Instant.now();
+
+        VehiclePricingPlan currentPlan = new VehiclePricingPlan();
+        currentPlan.setVehicle(fx.vehicle());
+        currentPlan.setCurrency("INR");
+        currentPlan.setHourlyRate(new BigDecimal("100.00"));
+        currentPlan.setDailyRate(new BigDecimal("1000.00"));
+        currentPlan.setSecurityDeposit(new BigDecimal("2000.00"));
+        currentPlan.setMinRentalHours(2);
+        currentPlan.setMaxRentalDays(30);
+        currentPlan.setValidFrom(now.minus(1, ChronoUnit.DAYS));
+        currentPlan.setValidTo(now.plus(2, ChronoUnit.DAYS));
+        currentPlan.setActive(true);
+        pricingPlanRepository.save(currentPlan);
+
+        VehiclePricingPlan futurePromoPlan = new VehiclePricingPlan();
+        futurePromoPlan.setVehicle(fx.vehicle());
+        futurePromoPlan.setCurrency("INR");
+        futurePromoPlan.setHourlyRate(new BigDecimal("150.00"));
+        futurePromoPlan.setDailyRate(new BigDecimal("1500.00"));
+        futurePromoPlan.setSecurityDeposit(new BigDecimal("2500.00"));
+        futurePromoPlan.setMinRentalHours(2);
+        futurePromoPlan.setMaxRentalDays(30);
+        futurePromoPlan.setValidFrom(now.plus(10, ChronoUnit.DAYS));
+        futurePromoPlan.setValidTo(now.plus(20, ChronoUnit.DAYS));
+        futurePromoPlan.setActive(true);
+        futurePromoPlan = pricingPlanRepository.saveAndFlush(futurePromoPlan);
+
+        // Find a Friday >= 12 days ahead so it falls inside futurePromoPlan [now+10d, now+20d]
+        LocalDate friday = LocalDate.now(IST).plusDays(12);
+        while (friday.getDayOfWeek() != DayOfWeek.FRIDAY) {
+            friday = friday.plusDays(1);
+        }
+        LocalDate saturday = friday.plusDays(1);
+
+        // Apply 1.20x season on Saturday ONLY (Friday is 1.00x)
+        SeasonalPrice saturdaySeason = new SeasonalPrice();
+        saturdaySeason.setIsland(fx.island());
+        saturdaySeason.setCategory(fx.category());
+        saturdaySeason.setSeasonName("Saturday Peak");
+        saturdaySeason.setStartDate(saturday);
+        saturdaySeason.setEndDate(saturday);
+        saturdaySeason.setMultiplier(new BigDecimal("1.20"));
+        saturdaySeason.setActive(true);
+        seasonalPriceRepository.save(saturdaySeason);
+
+        PricingRule weekendSurge = new PricingRule();
+        weekendSurge.setVehicle(fx.vehicle());
+        weekendSurge.setBusiness(fx.business());
+        weekendSurge.setCategory(fx.category());
+        weekendSurge.setRuleName("Weekend Surge 10%");
+        weekendSurge.setRuleType("WEEKEND_SURGE");
+        weekendSurge.setAdjustmentType("PERCENTAGE");
+        weekendSurge.setAdjustmentValue(new BigDecimal("10.00"));
+        weekendSurge.setPriority(10);
+        weekendSurge.setActive(true);
+        pricingRuleRepository.saveAndFlush(weekendSurge);
+
+        // <24h overnight rental: Fri 22:00 IST -> Sat 03:00 IST (5 hours)
+        Instant overnightStart = ZonedDateTime.of(friday, LocalTime.of(22, 0), IST).toInstant();
+        Instant overnightEnd = ZonedDateTime.of(saturday, LocalTime.of(3, 0), IST).toInstant();
+        PricingSnapshot overnightQuote = authoritativePricingService.calculateQuote(
+                fx.vehicle(), overnightStart, overnightEnd, PaymentMode.FULL, false, now
+        );
+        // Resolves futurePromoPlan based on startTime even though quoteAt is now
+        assertThat(overnightQuote.pricingPlanPublicId()).isEqualTo(futurePromoPlan.getPublicId());
+        assertThat(overnightQuote.baseRentalAmount()).isEqualByComparingTo("750.00"); // 5h * 150
+        // Overnight <24h window aligns both dailySeasons (Fri 1.00 + Sat 1.20 -> avg 1.10) AND WEEKEND_SURGE
+        assertThat(overnightQuote.dailySeasons()).hasSize(2);
+        assertThat(overnightQuote.seasonalMultiplier()).isEqualByComparingTo("1.10");
+        assertThat(overnightQuote.seasonalAdjustmentAmount()).isEqualByComparingTo("75.00");
+        assertThat(overnightQuote.appliedRules()).extracting(PricingSnapshot.AppliedRuleBreakdown::ruleType)
+                .contains("WEEKEND_SURGE");
+
+        // 3-day rental ending on Saturday (Thu, Fri 1.00 + Sat 1.20 -> avg (1+1+1.20)/3 = 1.0666.. -> 1.07 at 2dp)
+        // Base = 3 * 1500 = 4500; seasonal adjustment must match 2dp multiplier 1.07 => 4500 * 0.07 = 315.00
+        LocalDate thursday = friday.minusDays(1);
+        Instant threeDayStart = ZonedDateTime.of(thursday, LocalTime.of(10, 0), IST).toInstant();
+        Instant threeDayEnd = threeDayStart.plus(3, ChronoUnit.DAYS);
+        // Ensure thursday falls within futurePromoPlan
+        futurePromoPlan.setValidFrom(threeDayStart.minus(1, ChronoUnit.DAYS));
+        pricingPlanRepository.saveAndFlush(futurePromoPlan);
+
+        PricingSnapshot threeDayQuote = authoritativePricingService.calculateQuote(
+                fx.vehicle(), threeDayStart, threeDayEnd, PaymentMode.FULL, false, now
+        );
+        assertThat(threeDayQuote.seasonalMultiplier()).isEqualByComparingTo("1.07");
+        assertThat(threeDayQuote.seasonalAdjustmentAmount()).isEqualByComparingTo("315.00");
+    }
+
+    @Test
+    void cancellationAndCommission_rejectDepositViolationAndMissingCommissionRate() {
+        TestEntities fx = createBaseEntities();
+
+        // Cancellation tier cannot apply to security deposit (Decisions #2 / #3)
+        PartnerCancellationTier depositTier = new PartnerCancellationTier();
+        depositTier.setBusiness(fx.business());
+        depositTier.setMinHoursBeforePickup(24);
+        depositTier.setFeePercentage(new BigDecimal("50.00"));
+        depositTier.setAppliesToDeposit(true);
+        depositTier.setPriority(5);
+        cancellationTierRepository.saveAndFlush(depositTier);
+
+        assertThatThrownBy(() -> cancellationSnapshotService.captureSnapshot(
+                fx.business().getId(), new BigDecimal("2000.00"), Instant.now()))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("isolated");
+
+        // Commission guards: missing rate, negative collection, deposit-tainted totalPayable or collections
+        Booking missingRate = new Booking();
+        missingRate.setBaseRentalAmount(new BigDecimal("1000.00"));
+        missingRate.setTaxAmount(new BigDecimal("50.00"));
+        missingRate.setSecurityDepositAmount(new BigDecimal("2000.00"));
+        missingRate.setTotalPayableAmount(new BigDecimal("1050.00"));
+        missingRate.setCommissionRateSnapshot(null);
+        assertThatThrownBy(() -> commissionCalculationService.calculateAndRecord(
+                missingRate, new BigDecimal("1050.00"), BigDecimal.ZERO))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("commissionRateSnapshot");
+
+        Booking validBooking = new Booking();
+        validBooking.setBookingReference("IR-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+        validBooking.setUser(fx.tourist());
+        validBooking.setVehicle(fx.vehicle());
+        validBooking.setBusiness(fx.business());
+        validBooking.setPickupLocation(fx.location());
+        validBooking.setReturnLocation(fx.location());
+        Instant st = Instant.now().plus(2, ChronoUnit.DAYS);
+        validBooking.setStartTime(st);
+        validBooking.setEndTime(st.plus(1, ChronoUnit.DAYS));
+        validBooking.setTotalDays(1);
+        validBooking.setDailyRate(new BigDecimal("1000.00"));
+        validBooking.setBaseRentalAmount(new BigDecimal("1000.00"));
+        validBooking.setTaxAmount(new BigDecimal("50.00"));
+        validBooking.setSecurityDepositAmount(new BigDecimal("2000.00"));
+        validBooking.setTotalPayableAmount(new BigDecimal("1050.00"));
+        validBooking.setCommissionRateSnapshot(new BigDecimal("10.00"));
+        validBooking.setStatus(BookingStatus.COMPLETED);
+        validBooking.setPaymentMode(PaymentMode.FULL);
+        validBooking.setBookingMode(BookingMode.INSTANT);
+        Booking saved = bookingRepository.saveAndFlush(validBooking);
+
+        assertThatThrownBy(() -> commissionCalculationService.calculateAndRecord(
+                saved, new BigDecimal("-1.00"), BigDecimal.ZERO))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        // Excess collected including deposit amount rejected
+        assertThatThrownBy(() -> commissionCalculationService.calculateAndRecord(
+                saved, new BigDecimal("1050.00"), new BigDecimal("2000.00")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("exclude security deposit");
+
+        // Booking whose totalPayableAmount was tainted by including securityDepositAmount is rejected
+        saved.setTotalPayableAmount(new BigDecimal("3050.00"));
+        assertThatThrownBy(() -> commissionCalculationService.calculateAndRecord(
+                saved, new BigDecimal("1050.00"), BigDecimal.ZERO))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Security deposit must be isolated");
+    }
+
+    private void updateSystemSetting(String key, String value) {
+        SystemSetting setting = systemSettingRepository.findBySettingKey(key)
+                .orElseThrow(() -> new IllegalStateException("Missing seeded setting " + key));
+        setting.setSettingValue(value);
+        systemSettingRepository.saveAndFlush(setting);
     }
 
     private TestEntities createBaseEntities() {

@@ -36,19 +36,55 @@ public class CommissionCalculationService {
     public Commission calculateAndRecord(Booking booking,
                                            BigDecimal onlineRentalCollected,
                                            BigDecimal offlineRentalCollected) {
+        if (booking == null) {
+            throw new IllegalArgumentException("Booking is required for commission calculation.");
+        }
+        if (onlineRentalCollected != null && onlineRentalCollected.signum() < 0) {
+            throw new IllegalArgumentException("Online rental collected amount cannot be negative.");
+        }
+        if (offlineRentalCollected != null && offlineRentalCollected.signum() < 0) {
+            throw new IllegalArgumentException("Offline rental collected amount cannot be negative.");
+        }
+
         BigDecimal totalPayable = nonNegative(booking.getTotalPayableAmount());
         BigDecimal taxExcluded = nonNegative(booking.getTaxAmount());
         BigDecimal depositExcluded = nonNegative(booking.getSecurityDepositAmount());
         BigDecimal commissionableBase = totalPayable.subtract(taxExcluded).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
 
-        BigDecimal rate = booking.getCommissionRateSnapshot() != null
-                ? booking.getCommissionRateSnapshot()
-                : new BigDecimal("4.00");
+        if (booking.getBaseRentalAmount() != null) {
+            BigDecimal componentRentalBase = nonNegative(booking.getBaseRentalAmount())
+                    .add(booking.getSeasonalAdjustmentAmount() != null ? booking.getSeasonalAdjustmentAmount() : BigDecimal.ZERO)
+                    .add(nonNegative(booking.getSurchargeAmount()))
+                    .subtract(nonNegative(booking.getDiscountAmount()))
+                    .max(BigDecimal.ZERO)
+                    .add(nonNegative(booking.getCleaningFee()))
+                    .add(nonNegative(booking.getDeliveryFee()))
+                    .setScale(2, RoundingMode.HALF_UP);
+            if (depositExcluded.signum() > 0 && commissionableBase.subtract(componentRentalBase).compareTo(depositExcluded) >= 0) {
+                throw new IllegalStateException(
+                        "Security deposit must be isolated and excluded from booking totalPayableAmount and commission base for booking "
+                                + booking.getPublicId()
+                );
+            }
+        }
+
+        BigDecimal rate = booking.getCommissionRateSnapshot();
+        if (rate == null || rate.signum() < 0) {
+            throw new IllegalStateException(
+                    "Booking " + booking.getPublicId() + " is missing a valid commissionRateSnapshot."
+            );
+        }
         BigDecimal commissionAmount = commissionableBase.multiply(rate)
                 .divide(ONE_HUNDRED, 2, RoundingMode.HALF_UP);
 
         BigDecimal onlineCollected = nonNegative(onlineRentalCollected);
         BigDecimal offlineCollected = nonNegative(offlineRentalCollected);
+        if (depositExcluded.signum() > 0 && onlineCollected.add(offlineCollected).subtract(totalPayable).compareTo(depositExcluded) >= 0) {
+            throw new IllegalArgumentException(
+                    "Collected rental amounts for commission calculation must exclude security deposit for booking "
+                            + booking.getPublicId()
+            );
+        }
 
         BigDecimal partnerPayout;
         BigDecimal partnerReceivable = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);

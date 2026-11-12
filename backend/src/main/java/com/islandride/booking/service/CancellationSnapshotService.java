@@ -219,12 +219,17 @@ public class CancellationSnapshotService {
     }
 
     private CancellationPolicySnapshot.CancellationTierSnapshot toTierSnapshot(PartnerCancellationTier tier) {
+        if (tier.isAppliesToDeposit()) {
+            throw new BusinessRuleException(
+                    "Security deposits are strictly isolated and cannot be forfeited by cancellation tiers."
+            );
+        }
         return new CancellationPolicySnapshot.CancellationTierSnapshot(
                 tier.getMinHoursBeforePickup(),
                 tier.getMaxHoursBeforePickup(),
                 tier.getFeePercentage(),
                 tier.getFlatFeeAmount(),
-                tier.isAppliesToDeposit(),
+                false,
                 tier.getPriority()
         );
     }

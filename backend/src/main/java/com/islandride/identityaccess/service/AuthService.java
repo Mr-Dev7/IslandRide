@@ -111,7 +111,7 @@ public class AuthService {
             throw new DisabledException("User account is inactive or suspended");
         }
 
-        Long businessId = partnerStaffRepository.findByUserIdAndActiveTrue(user.getId())
+        Long businessId = partnerStaffRepository.findFirstByUserIdAndActiveTrueOrderByIdAsc(user.getId())
                 .map(staff -> staff.getBusiness().getId())
                 .orElse(null);
 
@@ -134,7 +134,7 @@ public class AuthService {
             throw new DisabledException("Account status does not permit token refresh");
         }
 
-        Long businessId = partnerStaffRepository.findByUserIdAndActiveTrue(user.getId())
+        Long businessId = partnerStaffRepository.findFirstByUserIdAndActiveTrueOrderByIdAsc(user.getId())
                 .map(staff -> staff.getBusiness().getId())
                 .orElse(null);
 
@@ -207,7 +207,7 @@ public class AuthService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessRuleException("User not found"));
 
-        Long businessId = partnerStaffRepository.findByUserIdAndActiveTrue(user.getId())
+        Long businessId = partnerStaffRepository.findFirstByUserIdAndActiveTrueOrderByIdAsc(user.getId())
                 .map(staff -> staff.getBusiness().getId())
                 .orElse(null);
 

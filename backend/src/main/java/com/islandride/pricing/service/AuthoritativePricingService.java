@@ -69,7 +69,7 @@ public class AuthoritativePricingService {
             throw new BusinessRuleException("Rental start time must be strictly before end time.");
         }
         Instant effectiveQuoteAt = quoteAt != null ? quoteAt : Instant.now();
-        EffectiveBookingPolicy policy = bookingPolicyService.resolvePolicy(vehicle.getBusiness().getId());
+        EffectiveBookingPolicy policy = bookingPolicyService.resolvePolicy(vehicle);
 
         long leadMinutes = Duration.between(effectiveQuoteAt, startTime).toMinutes();
         if (leadMinutes < policy.minLeadTimeMinutes()) {
@@ -79,7 +79,7 @@ public class AuthoritativePricingService {
         }
 
         long durationMinutes = Duration.between(startTime, endTime).toMinutes();
-        VehiclePricingPlan activePlan = resolveEffectivePlan(vehicle, effectiveQuoteAt);
+        VehiclePricingPlan activePlan = resolveEffectivePlan(vehicle, startTime);
 
         int minRentalHours = activePlan != null ? activePlan.getMinRentalHours() : policy.minRentalHours();
         int maxRentalDays = activePlan != null ? activePlan.getMaxRentalDays() : policy.maxRentalDays();
@@ -143,12 +143,16 @@ public class AuthoritativePricingService {
         ZoneId zoneId = policy.operatingHoursTimezone();
         LocalDate startDate = startTime.atZone(zoneId).toLocalDate();
         LocalDate lastRentalDate = startDate.plusDays(Math.max(0, billableDays - 1));
-        LocalDate endInstantDate = endTime.atZone(zoneId).toLocalDate();
+        LocalDate endInstantDate = endTime.minusNanos(1).atZone(zoneId).toLocalDate();
+        LocalDate effectiveRuleEndDate = endInstantDate.isAfter(lastRentalDate) ? endInstantDate : lastRentalDate;
+        int seasonalDayCount = (durationMinutes < 1440L && endInstantDate.isAfter(startDate))
+                ? (int) Math.max(1L, java.time.temporal.ChronoUnit.DAYS.between(startDate, endInstantDate) + 1L)
+                : billableDays;
 
         SeasonalComputation seasonResult = computeSeasonalAdjustment(
                 vehicle,
                 startDate,
-                billableDays,
+                seasonalDayCount,
                 baseRentalAmount
         );
         BigDecimal seasonalAdjustedBase = baseRentalAmount.add(seasonResult.adjustmentAmount())
@@ -158,7 +162,7 @@ public class AuthoritativePricingService {
                 vehicle,
                 billableDays,
                 startDate,
-                endInstantDate.isAfter(lastRentalDate) ? endInstantDate : lastRentalDate,
+                effectiveRuleEndDate,
                 seasonalAdjustedBase
         );
 
@@ -290,12 +294,12 @@ public class AuthoritativePricingService {
             multiplierSum = multiplierSum.add(dayMultiplier);
         }
 
-        BigDecimal exactAvgMultiplier = multiplierSum.divide(BigDecimal.valueOf(billableDays), 6, RoundingMode.HALF_UP);
-        BigDecimal seasonalBase = baseRentalAmount.multiply(exactAvgMultiplier).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal effectiveAvgMultiplier = multiplierSum.divide(BigDecimal.valueOf(billableDays), 2, RoundingMode.HALF_UP);
+        BigDecimal seasonalBase = baseRentalAmount.multiply(effectiveAvgMultiplier).setScale(2, RoundingMode.HALF_UP);
         BigDecimal adjustment = seasonalBase.subtract(baseRentalAmount).setScale(2, RoundingMode.HALF_UP);
 
         return new SeasonalComputation(
-                exactAvgMultiplier.setScale(2, RoundingMode.HALF_UP),
+                effectiveAvgMultiplier,
                 adjustment,
                 dailyBreakdowns
         );

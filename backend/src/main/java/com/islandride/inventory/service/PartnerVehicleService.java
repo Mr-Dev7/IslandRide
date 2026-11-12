@@ -492,7 +492,7 @@ public class PartnerVehicleService {
         v.setRentalInstructions(normalizeBlank(req.rentalInstructions()));
         v.setDailyRate(req.dailyRate());
         v.setSecurityDeposit(req.securityDeposit() != null ? req.securityDeposit() : BigDecimal.ZERO);
-        v.setTurnaroundBufferMinutes(req.turnaroundBufferMinutes() != null ? req.turnaroundBufferMinutes() : 60);
+        v.setTurnaroundBufferMinutes(req.turnaroundBufferMinutes());
         v.setBookingMode(req.bookingMode() != null ? req.bookingMode() : BookingMode.INSTANT);
 
         Set<String> cleanedFeatures = new LinkedHashSet<>();

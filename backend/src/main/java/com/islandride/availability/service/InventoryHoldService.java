@@ -46,6 +46,8 @@ public class InventoryHoldService {
 
     private static final Logger log = LoggerFactory.getLogger(InventoryHoldService.class);
     private static final Duration REDIS_LOCK_TTL = Duration.ofSeconds(5);
+    private static final int REDIS_LOCK_MAX_ATTEMPTS = 4;
+    private static final long REDIS_LOCK_RETRY_MILLIS = 15L;
     private static final List<String> NON_BLOCKING_STATUS_NAMES = BookingStatus.NON_BLOCKING_STATUSES.stream()
             .map(Enum::name)
             .toList();
@@ -99,7 +101,7 @@ public class InventoryHoldService {
         if (command.idempotencyKey() != null && !command.idempotencyKey().isBlank()) {
             return idempotencyService.execute(
                     "INVENTORY_HOLD_ACQUIRE",
-                    "user:" + command.userId(),
+                    IdempotencyService.actorKeyForUser(command.userId()),
                     command.idempotencyKey(),
                     command,
                     Duration.ofHours(24),
@@ -139,7 +141,7 @@ public class InventoryHoldService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + command.userId()));
 
         Instant now = Instant.now();
-        EffectiveBookingPolicy policy = bookingPolicyService.resolvePolicy(vehicle.getBusiness().getId());
+        EffectiveBookingPolicy policy = bookingPolicyService.resolvePolicy(vehicle);
 
         long leadMinutes = Duration.between(now, command.startTime()).toMinutes();
         if (leadMinutes < policy.minLeadTimeMinutes()) {
@@ -256,18 +258,29 @@ public class InventoryHoldService {
             return null;
         }
         String token = UUID.randomUUID().toString();
-        try {
-            Boolean acquired = redisTemplate.opsForValue().setIfAbsent(key, token, REDIS_LOCK_TTL);
-            if (Boolean.FALSE.equals(acquired)) {
-                throw new ConflictException("Concurrent reservation attempt in progress for this vehicle. Please retry.");
+        for (int attempt = 0; attempt < REDIS_LOCK_MAX_ATTEMPTS; attempt++) {
+            try {
+                Boolean acquired = redisTemplate.opsForValue().setIfAbsent(key, token, REDIS_LOCK_TTL);
+                if (Boolean.TRUE.equals(acquired)) {
+                    return token;
+                }
+            } catch (Exception ex) {
+                log.debug("Redis advisory lock unavailable for key {}, falling back to MySQL row lock: {}", key, ex.getMessage());
+                return null;
             }
-            return token;
-        } catch (ConflictException ex) {
-            throw ex;
-        } catch (Exception ex) {
-            log.debug("Redis advisory lock unavailable for key {}, falling back to MySQL row lock: {}", key, ex.getMessage());
-            return null;
+            if (attempt + 1 < REDIS_LOCK_MAX_ATTEMPTS) {
+                try {
+                    Thread.sleep(REDIS_LOCK_RETRY_MILLIS);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
+            }
         }
+        // Redis lock is strictly advisory; fall through so MySQL PESSIMISTIC_WRITE handles concurrent serialization
+        // without causing false conflicts across non-overlapping date ranges on the same vehicle.
+        log.debug("Redis advisory lock busy for key {}, delegating serialization to MySQL PESSIMISTIC_WRITE", key);
+        return null;
     }
 
     private void releaseRedisLock(String key, String token) {
