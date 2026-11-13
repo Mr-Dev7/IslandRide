@@ -1,17 +1,40 @@
 package com.islandride.paymentfinance.gateway;
 
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 @Component
 @ConfigurationProperties(prefix = "islandride.payment")
-public class PaymentGatewayProperties {
+public class PaymentGatewayProperties implements InitializingBean {
 
     private String provider = "mock";
     private boolean liveEnabled = false;
     private int orderExpiryMinutes = 15;
     private RazorpayProperties razorpay = new RazorpayProperties();
     private MockProperties mock = new MockProperties();
+
+    @Override
+    public void afterPropertiesSet() {
+        validate();
+    }
+
+    /**
+     * Validates payment configuration.
+     * If live payments are explicitly enabled for the Razorpay provider,
+     * required credentials (key-id, key-secret) must be provided.
+     */
+    public void validate() {
+        if (liveEnabled && "razorpay".equalsIgnoreCase(provider)) {
+            if (razorpay == null
+                    || razorpay.getKeyId() == null || razorpay.getKeyId().isBlank()
+                    || razorpay.getKeySecret() == null || razorpay.getKeySecret().isBlank()) {
+                throw new IllegalStateException(
+                        "Payment configuration error: Live Razorpay payments are enabled, but required credentials (key-id, key-secret) are missing."
+                );
+            }
+        }
+    }
 
     public String getProvider() {
         return provider;

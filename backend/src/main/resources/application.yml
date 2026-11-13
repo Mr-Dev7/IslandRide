@@ -83,6 +83,20 @@ islandride:
     enabled: ${RATELIMIT_ENABLED:true}
     upload-per-minute: ${RATELIMIT_UPLOAD_PER_MINUTE:60}
     catalog-search-per-minute: ${RATELIMIT_CATALOG_PER_MINUTE:300}
+  payment:
+    provider: ${ISLANDRIDE_PAYMENT_PROVIDER:${PAYMENT_GATEWAY_PROVIDER:mock}}
+    live-enabled: ${ISLANDRIDE_PAYMENT_LIVE_ENABLED:${PAYMENT_LIVE_ENABLED:false}}
+    order-expiry-minutes: ${ISLANDRIDE_PAYMENT_ORDER_EXPIRY_MINUTES:15}
+    razorpay:
+      base-url: ${RAZORPAY_BASE_URL:https://api.razorpay.com/v1}
+      key-id: ${ISLANDRIDE_PAYMENT_RAZORPAY_KEY_ID:${RAZORPAY_KEY_ID:}}
+      key-secret: ${ISLANDRIDE_PAYMENT_RAZORPAY_KEY_SECRET:${RAZORPAY_KEY_SECRET:}}
+      webhook-secret: ${ISLANDRIDE_PAYMENT_RAZORPAY_WEBHOOK_SECRET:${RAZORPAY_WEBHOOK_SECRET:}}
+      connect-timeout-seconds: ${RAZORPAY_CONNECT_TIMEOUT_SECONDS:10}
+      read-timeout-seconds: ${RAZORPAY_READ_TIMEOUT_SECONDS:15}
+    mock:
+      key-secret: ${ISLANDRIDE_PAYMENT_MOCK_KEY_SECRET:mock-islandride-key-secret}
+      webhook-secret: ${ISLANDRIDE_PAYMENT_MOCK_WEBHOOK_SECRET:mock-islandride-webhook-secret}
 
 
 
