@@ -96,6 +96,38 @@ class RazorpayGatewayAdapterTest {
         )))
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("Live Razorpay gateway operations are disabled");
+
+        // Verify that zero HTTP requests were dispatched
+        mockServer.verify();
+    }
+
+    @Test
+    void fetchPaymentStatus_whenLiveDisabled_throwsBusinessRuleExceptionWithoutHttp() {
+        properties.setLiveEnabled(false);
+
+        assertThatThrownBy(() -> adapter.fetchPaymentStatus("pay_test_disabled"))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("Live Razorpay gateway operations are disabled");
+
+        mockServer.verify();
+    }
+
+    @Test
+    void initiateRefund_whenLiveDisabled_throwsBusinessRuleExceptionWithoutHttp() {
+        properties.setLiveEnabled(false);
+
+        assertThatThrownBy(() -> adapter.initiateRefund(new GatewayRefundRequest(
+                "pay_test_disabled",
+                new BigDecimal("500.00"),
+                "INR",
+                "Reason",
+                "idemp_ref_1",
+                Map.of()
+        )))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("Live Razorpay gateway operations are disabled");
+
+        mockServer.verify();
     }
 
     @Test
