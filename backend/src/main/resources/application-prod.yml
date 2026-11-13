@@ -24,6 +24,16 @@ spring:
   flyway:
     enabled: true
 
+  # Production Redis Configuration (Ephemeral holds, distributed lock coordination & rate limiting)
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
+      timeout: 3000ms
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
+
 islandride:
   security:
     jwt:
