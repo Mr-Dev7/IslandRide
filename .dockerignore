@@ -1,0 +1,56 @@
+# ==============================================================================
+# IslandRide — Root Docker Build Ignore (.dockerignore)
+# Build context: Repository Root (.)
+# ==============================================================================
+
+# Version Control & CI/CD
+.git
+.github
+.gitignore
+
+# Environment & Secrets
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.jks
+
+# Dependencies & Package Managers
+**/node_modules
+**/.npm
+
+# Build Outputs & Caches
+**/dist
+**/.angular
+**/coverage
+**/.tmp
+backend/target
+**/target
+
+# Database & Infrastructure Local Volume Data
+docker-data/
+mysql-data/
+redis-data/
+storage/
+
+# Documentation & Design Assets
+docs/
+*.md
+
+# IDE & Editor Files
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+
+# Operating System & Temporary Files
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
