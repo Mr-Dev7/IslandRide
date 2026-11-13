@@ -1,0 +1,67 @@
+{
+  "pages": [
+    {
+      "page": "Homepage (Desktop 1280px)",
+      "url": "/",
+      "ok": true
+    },
+    {
+      "page": "Vehicle Details",
+      "url": "/vehicles/6d8e0308-df3e-11f1-9add-02167fc40063",
+      "ok": true
+    }
+  ],
+  "overflowChecks": [
+    {
+      "page": "Homepage Desktop",
+      "overflow": false
+    },
+    {
+      "page": "Homepage Tablet (768px)",
+      "overflow": false
+    },
+    {
+      "page": "Homepage Mobile (375px)",
+      "overflow": false
+    },
+    {
+      "page": "Search Catalog Desktop",
+      "overflow": false
+    },
+    {
+      "page": "Search Catalog Mobile",
+      "overflow": false
+    },
+    {
+      "page": "Vehicle Details",
+      "overflow": false
+    },
+    {
+      "page": "Partner Dashboard Desktop",
+      "overflow": false
+    },
+    {
+      "page": "Partner Dashboard Mobile",
+      "overflow": false
+    },
+    {
+      "page": "Admin Operations Dashboard",
+      "overflow": false
+    }
+  ],
+  "mobileDrawer": {
+    "hamburgerFound": true,
+    "drawerOpen": true
+  },
+  "wizardSteps": {
+    "step1Reached": true,
+    "step2Reached": true,
+    "step3Reached": true
+  },
+  "consoleErrors": [],
+  "touchTargetAudit": {
+    "totalInteractive": 10,
+    "compliantTouchTargets": 10,
+    "complianceRate": "100%"
+  }
+}

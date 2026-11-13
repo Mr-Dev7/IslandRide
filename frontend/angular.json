@@ -67,6 +67,9 @@
         },
         "serve": {
           "builder": "@angular-devkit/build-angular:dev-server",
+          "options": {
+            "proxyConfig": "proxy.conf.json"
+          },
           "configurations": {
             "production": {
               "buildTarget": "islandride-frontend:build:production"
@@ -100,6 +103,9 @@
         }
       }
     }
+  },
+  "cli": {
+    "analytics": "4ff35e7e-256c-4445-b9e9-86906b3096b6"
   }
 }
 
