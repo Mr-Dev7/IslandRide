@@ -1,0 +1,411 @@
+# IslandRide — Phase 7A: Production Infrastructure & Configuration Implementation Plan
+
+**Date:** 2026-11-13  
+**Status:** PROPOSED (Awaiting Authorization)  
+**Author:** Antigravity Autonomous Security & Architecture Review  
+**Git Baseline Commit:** `02ff222`  
+**Target Milestone:** Phase 7A — Production Configuration & Infrastructure Remediation  
+**Deliverable Document:** `docs/islandride-phase-7a-implementation-plan.md`  
+
+---
+
+## 1. Executive Summary & Objective
+
+During the Phase 7 Production Readiness Audit (`docs/islandride-phase-7-production-readiness-audit.md`), several critical gaps were identified in production configuration, container packaging, environment variable alignment, and runtime plumbing. 
+
+The primary objective of **Phase 7A** is to remediate these infrastructure, deployment, and configuration deficiencies without altering underlying business domain rules or database schemas. 
+
+### Scope of Phase 7A
+1. **Production Redis Configuration:** Bind and configure Redis under `spring.data.redis` for the `prod` profile, supporting authentication, custom ports, SSL/TLS, and connection timeouts.
+2. **Payment Gateway Production Configuration:** Expose and map `islandride.payment.*` configuration properties in `application.yml` and `application-prod.yml` to support live Razorpay credentials, webhook secret verification, and live gating.
+3. **Frontend Dockerfile & Docker Build-Context Correction:** Restructure `infrastructure/docker/frontend.Dockerfile` to resolve incompatible copy paths, align with the repository root build context, and introduce a root `.dockerignore` file.
+4. **Frontend Production Environment Configuration:** Configure `fileReplacements` in `frontend/angular.json` under `architect.build.configurations.production` to ensure `environment.prod.ts` is substituted during production builds.
+5. **Production Environment Variables & Secrets Management:** Harmonize environment variable names across `.env.example`, `application.yml`, `application-prod.yml`, and `docker-compose.yml` to eliminate naming mismatches (e.g. `MYSQL_USER` vs `DB_USERNAME`, `PAYMENT_GATEWAY_PROVIDER` vs `ISLANDRIDE_PAYMENT_PROVIDER`).
+
+---
+
+## 2. Validation & Problem Confirmation Matrix
+
+Before planning any changes, each finding from the Phase 7 audit was verified against the actual source code and configuration files.
+
+| Scope Domain | Audit Finding ID | Target Files Inspected | Current Implementation Status | Confirmed Problem | Regression Risk |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **1. Redis Configuration** | `FINDING-CRIT-04` | `backend/src/main/resources/application-prod.yml`<br>`application-local.yml` | `application-local.yml` lines 37–43 configures `spring.data.redis`. `application-prod.yml` has **zero** Redis settings. | **CONFIRMED:** `SPRING_PROFILES_ACTIVE=prod` defaults to `localhost:6379` without password, ignoring `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD`. | **Zero risk to local dev:** Local profile continues reading `application-local.yml`. |
+| **2. Payment Gateway Config** | `FINDING-CRIT-01` | `backend/src/main/resources/application-prod.yml`<br>`application.yml`<br>`PaymentGatewayProperties.java` | `PaymentGatewayProperties.java` uses `@ConfigurationProperties(prefix = "islandride.payment")`. Neither `application.yml` nor `application-prod.yml` defines this block. | **CONFIRMED:** Defaults to `provider = "mock"` and `liveEnabled = false`. Environment variables in `.env.example` (`RAZORPAY_KEY_ID`, etc.) are ignored by Spring. | **Zero risk to mock dev:** Base default remains `mock` when live credentials are not supplied. |
+| **3. Frontend Docker Context** | `FINDING-HIGH-03` | `infrastructure/docker/frontend.Dockerfile`<br>`infrastructure/nginx/default.conf` | Line 8 expects `COPY package*.json ./` from context; line 16 expects `COPY ./infrastructure/nginx/default.conf` from context. | **CONFIRMED:** Cannot be built from repository root (missing `package.json`) or `frontend/` (missing `../infrastructure`). Fails in any standard CI/CD docker build. | **Zero risk to local dev:** Local startup uses `ng serve` and does not invoke the Dockerfile. |
+| **4. Frontend Environment Config** | `FINDING-MED-01` | `frontend/angular.json`<br>`frontend/src/environments/` | `angular.json` lines 34–67 has no `fileReplacements` block in `configurations.production`. | **CONFIRMED:** Production bundle retains `environment.ts` (`production: false`, `apiBaseUrl: 'http://localhost:8080/api/v1'`) instead of `environment.prod.ts`. | **Zero risk to local dev:** `ng serve` uses `development` configuration by default. |
+| **5. Env Var & Secrets Alignment** | `FINDING-CRIT-01`<br>`FINDING-HIGH-01` | `.env.example`<br>`application-prod.yml`<br>`docker-compose.yml` | `.env.example` uses `MYSQL_USER`, `MYSQL_PASSWORD`, `PAYMENT_GATEWAY_PROVIDER`. `application-prod.yml` uses `DB_USERNAME`, `DB_PASSWORD`. | **CONFIRMED:** Deploying with `.env.example` names causes Spring Boot startup failure due to missing `DB_USERNAME` and unmapped payment properties. | **Zero risk to local dev:** Dual-binding fallback `${DB_USERNAME:${MYSQL_USER}}` preserves existing setups. |
+
+---
+
+## 3. Deep-Dive Problem Analysis & Detailed Specifications
+
+### Task 1: Production Redis Configuration
+
+#### Current Implementation
+In `backend/src/main/resources/application-local.yml` lines 37–43:
+```yaml
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:redis_dev_password}
+      timeout: 2000ms
+```
+In `backend/src/main/resources/application.yml`: No `spring.data.redis` block exists.  
+In `backend/src/main/resources/application-prod.yml`: No `spring.data.redis` block exists.
+
+#### Problem
+In production, Spring Boot auto-configures `LettuceConnectionFactory` using defaults: `localhost:6379` with no password. If deployed to container environments where Redis runs as a separate service (e.g. host `redis` or AWS ElastiCache), connection fails or attempts an insecure unauthenticated connection.
+
+#### Proposed Solution
+1. In `backend/src/main/resources/application.yml` (base), define baseline fallback defaults:
+   ```yaml
+   spring:
+     data:
+       redis:
+         host: ${REDIS_HOST:localhost}
+         port: ${REDIS_PORT:6379}
+         password: ${REDIS_PASSWORD:}
+         timeout: 2000ms
+   ```
+2. In `backend/src/main/resources/application-prod.yml`, define production-hardened Redis configuration with SSL support:
+   ```yaml
+   spring:
+     data:
+       redis:
+         host: ${REDIS_HOST:localhost}
+         port: ${REDIS_PORT:6379}
+         password: ${REDIS_PASSWORD}
+         timeout: 3000ms
+         ssl:
+           enabled: ${REDIS_SSL_ENABLED:false}
+   ```
+
+---
+
+### Task 2: Payment Gateway Production Configuration
+
+#### Current Implementation
+`PaymentGatewayProperties.java` declares:
+- Prefix: `islandride.payment`
+- Fields: `provider` (default: `"mock"`), `liveEnabled` (default: `false`), `orderExpiryMinutes` (default: `15`), nested `razorpay` (`baseUrl`, `keyId`, `keySecret`, `webhookSecret`, `connectTimeoutSeconds`, `readTimeoutSeconds`), and nested `mock` (`keySecret`, `webhookSecret`).
+Neither `application.yml` nor `application-prod.yml` defines the `islandride.payment` block.
+
+#### Problem
+Setting environment variables such as `PAYMENT_GATEWAY_PROVIDER=razorpay` or `RAZORPAY_KEY_ID=...` from `.env.example` has no effect because Spring expects `ISLANDRIDE_PAYMENT_PROVIDER` and `ISLANDRIDE_PAYMENT_RAZORPAY_KEY_ID`. In production, without explicit configuration, the payment system remains in mock mode, preventing live payments and potentially allowing simulated free checkouts.
+
+#### Proposed Solution
+1. In `backend/src/main/resources/application.yml`, define base properties with dual-name fallback support:
+   ```yaml
+   islandride:
+     payment:
+       provider: ${ISLANDRIDE_PAYMENT_PROVIDER:${PAYMENT_GATEWAY_PROVIDER:mock}}
+       live-enabled: ${ISLANDRIDE_PAYMENT_LIVE_ENABLED:${PAYMENT_LIVE_ENABLED:false}}
+       order-expiry-minutes: ${ISLANDRIDE_PAYMENT_ORDER_EXPIRY_MINUTES:15}
+       razorpay:
+         base-url: ${RAZORPAY_BASE_URL:https://api.razorpay.com/v1}
+         key-id: ${ISLANDRIDE_PAYMENT_RAZORPAY_KEY_ID:${RAZORPAY_KEY_ID:}}
+         key-secret: ${ISLANDRIDE_PAYMENT_RAZORPAY_KEY_SECRET:${RAZORPAY_KEY_SECRET:}}
+         webhook-secret: ${ISLANDRIDE_PAYMENT_RAZORPAY_WEBHOOK_SECRET:${RAZORPAY_WEBHOOK_SECRET:}}
+         connect-timeout-seconds: ${RAZORPAY_CONNECT_TIMEOUT_SECONDS:10}
+         read-timeout-seconds: ${RAZORPAY_READ_TIMEOUT_SECONDS:15}
+       mock:
+         key-secret: ${ISLANDRIDE_PAYMENT_MOCK_KEY_SECRET:mock-islandride-key-secret}
+         webhook-secret: ${ISLANDRIDE_PAYMENT_MOCK_WEBHOOK_SECRET:mock-islandride-webhook-secret}
+   ```
+2. In `backend/src/main/resources/application-prod.yml`, configure production overrides requiring real credentials when live mode is active:
+   ```yaml
+   islandride:
+     payment:
+       provider: ${ISLANDRIDE_PAYMENT_PROVIDER:${PAYMENT_GATEWAY_PROVIDER:razorpay}}
+       live-enabled: ${ISLANDRIDE_PAYMENT_LIVE_ENABLED:${PAYMENT_LIVE_ENABLED:true}}
+       order-expiry-minutes: ${ISLANDRIDE_PAYMENT_ORDER_EXPIRY_MINUTES:15}
+       razorpay:
+         base-url: ${RAZORPAY_BASE_URL:https://api.razorpay.com/v1}
+         key-id: ${ISLANDRIDE_PAYMENT_RAZORPAY_KEY_ID:${RAZORPAY_KEY_ID}}
+         key-secret: ${ISLANDRIDE_PAYMENT_RAZORPAY_KEY_SECRET:${RAZORPAY_KEY_SECRET}}
+         webhook-secret: ${ISLANDRIDE_PAYMENT_RAZORPAY_WEBHOOK_SECRET:${RAZORPAY_WEBHOOK_SECRET}}
+         connect-timeout-seconds: ${RAZORPAY_CONNECT_TIMEOUT_SECONDS:10}
+         read-timeout-seconds: ${RAZORPAY_READ_TIMEOUT_SECONDS:15}
+   ```
+
+---
+
+### Task 3: Frontend Dockerfile and Build-Context Correction
+
+#### Current Implementation
+`infrastructure/docker/frontend.Dockerfile`:
+```dockerfile
+# Stage 1: Build Angular Static Artifacts
+FROM node:24-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --prefer-offline
+COPY . .
+RUN npm run build -- --configuration=production
+
+# Stage 2: Serve via Nginx
+FROM nginx:1.27-alpine
+COPY --from=build /app/dist/islandride-frontend/browser /usr/share/nginx/html
+COPY ./infrastructure/nginx/default.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+```
+
+#### Problem
+- If run from root (`docker build -f infrastructure/docker/frontend.Dockerfile .`), line 8 (`COPY package*.json ./`) fails because `package.json` is located at `frontend/package.json`.
+- If run from `frontend/` (`cd frontend && docker build -f ../infrastructure/docker/frontend.Dockerfile .`), line 16 (`COPY ./infrastructure/nginx/default.conf ...`) fails because `infrastructure/` is outside the build context.
+- There is no `.dockerignore` file, meaning `docker build` transmits `node_modules` (300MB+), `.git` (100MB+), and `backend/target` into the Docker daemon.
+
+#### Proposed Solution
+1. Standardize the build context to the **repository root** for all Dockerfiles.
+2. Update `infrastructure/docker/frontend.Dockerfile` to reference `frontend/` subpaths:
+   ```dockerfile
+   # Stage 1: Build Angular Production Artifacts
+   FROM node:24-alpine AS build
+   WORKDIR /app
+   COPY frontend/package*.json ./
+   RUN npm ci --prefer-offline
+   COPY frontend/ ./
+   RUN npm run build -- --configuration=production
+
+   # Stage 2: Serve via Hardened Nginx
+   FROM nginx:1.27-alpine
+   COPY --from=build /app/dist/islandride-frontend/browser /usr/share/nginx/html
+   COPY infrastructure/nginx/default.conf /etc/nginx/conf.d/default.conf
+   EXPOSE 80
+   HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+       CMD wget -q --spider http://localhost/ || exit 1
+   CMD ["nginx", "-g", "daemon off;"]
+   ```
+3. Create `.dockerignore` at the repository root:
+   ```dockerignore
+   .git
+   .github
+   .idea
+   .vscode
+   **/node_modules
+   **/target
+   **/dist
+   **/storage
+   docs/screenshots
+   *.log
+   ```
+
+---
+
+### Task 4: Frontend Production Environment Configuration
+
+#### Current Implementation
+`frontend/angular.json` lines 34–67:
+```json
+          "configurations": {
+            "production": {
+              "optimization": { ... },
+              "budgets": [ ... ],
+              "outputHashing": "all"
+            },
+            "development": { ... }
+          }
+```
+`frontend/src/environments/environment.ts`:
+```typescript
+export const environment = {
+  production: false,
+  apiBaseUrl: 'http://localhost:8080/api/v1',
+  appName: 'IslandRide (Local Development)'
+};
+```
+`frontend/src/environments/environment.prod.ts`:
+```typescript
+export const environment = {
+  production: true,
+  apiBaseUrl: '/api/v1',
+  appName: 'IslandRide'
+};
+```
+
+#### Problem
+Without `fileReplacements` under `architect.build.configurations.production` in `angular.json`, the Angular build compiles `environment.ts` directly into the production bundle. Any code that inspects `environment.production` receives `false`, and any code referencing `environment.apiBaseUrl` will point to `http://localhost:8080/api/v1` instead of the production relative path `/api/v1`.
+
+#### Proposed Solution
+Add `fileReplacements` to `frontend/angular.json` under `projects.islandride-frontend.architect.build.configurations.production`:
+```json
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.prod.ts"
+                }
+              ],
+```
+
+---
+
+### Task 5: Production Environment Variables & Secrets Management
+
+#### Current Implementation & Problem
+A systematic audit between `.env.example`, `application.yml`, `application-prod.yml`, and `docker-compose.yml` identified key discrepancies:
+
+| Variable Purpose | `.env.example` Name | `application-prod.yml` Name | `docker-compose.yml` Name | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| Database Host | `MYSQL_HOST=localhost` | `DB_HOST` | N/A (service: `mysql`) | Mismatch |
+| Database Port | `MYSQL_PORT=3307` | `DB_PORT` | `MYSQL_HOST_PORT` | Mismatch |
+| Database Name | `MYSQL_DATABASE=islandride_db` | `DB_NAME` | `MYSQL_DATABASE` | Mismatch |
+| Database User | `MYSQL_USER=islandride_user` | `DB_USERNAME` | `MYSQL_USER` | Mismatch |
+| Database Password | `MYSQL_PASSWORD=...` | `DB_PASSWORD` | `MYSQL_PASSWORD` | Mismatch |
+| Redis Host | `REDIS_HOST=localhost` | Missing | N/A (service: `redis`) | Mismatch |
+| Redis Password | `REDIS_PASSWORD=...` | Missing | `REDIS_PASSWORD` | Mismatch |
+| Payment Provider | `PAYMENT_GATEWAY_PROVIDER=mock` | Missing | N/A | Missing |
+| Razorpay Key ID | `RAZORPAY_KEY_ID=...` | Missing | N/A | Missing |
+| JWT Expiry | `JWT_EXPIRATION_MINUTES=15` | `JWT_ACCESS_EXPIRATION_MS` | N/A | Unit Mismatch |
+| Refresh Expiry | `REFRESH_TOKEN_EXPIRATION_DAYS=7` | `JWT_REFRESH_EXPIRATION_MS` | N/A | Unit Mismatch |
+
+#### Proposed Solution
+1. In `application-prod.yml`, adopt dual-variable fallback syntax for all database and payment parameters:
+   - `url: jdbc:mysql://${DB_HOST:${MYSQL_HOST:localhost}}:${DB_PORT:${MYSQL_PORT:3306}}/${DB_NAME:${MYSQL_DATABASE:islandride_db}}?...`
+   - `username: ${DB_USERNAME:${MYSQL_USER}}`
+   - `password: ${DB_PASSWORD:${MYSQL_PASSWORD}}`
+   - `host: ${REDIS_HOST:localhost}`
+   - `port: ${REDIS_PORT:6379}`
+   - `password: ${REDIS_PASSWORD}`
+2. Update `.env.example` to document canonical variable names and their production equivalents clearly, including comments for unit expectations (e.g. milliseconds vs minutes/days).
+
+---
+
+## 4. Exact Affected Files List
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       PHASE 7A TARGET FILE MODIFICATIONS                    │
+├───────────────────────────────────────────────────────┬────────────┬────────┤
+│ File Path                                             │ Action     │ Risk   │
+├───────────────────────────────────────────────────────┼────────────┼────────┤
+│ backend/src/main/resources/application.yml            │ Modify     │ Low    │
+│ backend/src/main/resources/application-prod.yml       │ Modify     │ Low    │
+│ frontend/angular.json                                 │ Modify     │ Low    │
+│ infrastructure/docker/frontend.Dockerfile             │ Modify     │ Low    │
+│ .dockerignore                                         │ Create     │ Low    │
+│ .env.example                                          │ Modify     │ Low    │
+│ docs/islandride-phase-7a-implementation-plan.md       │ Create     │ None   │
+└───────────────────────────────────────────────────────┴────────────┴────────┘
+```
+
+**Files Explicitly NOT Modified in Phase 7A:**
+- Zero Java application code files.
+- Zero TypeScript component or service files.
+- Zero database migrations (Flyway V1–V14 remain untouched).
+- Zero database entity or repository interfaces.
+- Zero test classes.
+
+---
+
+## 5. Task Dependencies & Interaction Matrix
+
+```mermaid
+flowchart TD
+    Task1["Task 1: Redis Config (application.yml & application-prod.yml)"]
+    Task2["Task 2: Payment Config (application.yml & application-prod.yml)"]
+    Task3["Task 3: Frontend Dockerfile & .dockerignore"]
+    Task4["Task 4: Angular fileReplacements (angular.json)"]
+    Task5["Task 5: Environment Variables & .env.example"]
+
+    Task1 --> Task5
+    Task2 --> Task5
+    Task4 --> Task3
+    Task3 --> Complete["Phase 7A Verification Ready"]
+    Task5 --> Complete
+```
+
+- **Tasks 1 & 2** modify the same configuration files (`application.yml` and `application-prod.yml`). They will be executed together to avoid duplicate edits.
+- **Task 4** modifies `frontend/angular.json`. It must be completed prior to testing Task 3 so that the Docker build produces the correct production bundle.
+- **Task 5** updates `.env.example` to reflect all variables added in Tasks 1 and 2.
+
+---
+
+## 6. Security & Secrets Considerations
+
+1. **No Production Defaults for Sensitive Secrets:**
+   - In `application-prod.yml`, `JWT_SECRET`, `DB_PASSWORD`, `REDIS_PASSWORD`, `RAZORPAY_KEY_SECRET`, and `RAZORPAY_WEBHOOK_SECRET` must **never** specify fallback defaults. Spring Boot will fail to start if any of these are missing in the `prod` profile, preventing insecure accidental deployments.
+2. **Local Development Default Preservation:**
+   - In `application.yml` and `application-local.yml`, local development defaults (`mock` provider, `redis_dev_password`, dummy JWT secret) are maintained so developers can continue running `start-islandride.ps1` without requiring external secrets or third-party accounts.
+3. **Cookie Security:**
+   - `__Host-refresh_token` cookie attributes (`secure: true`, `SameSite: Strict`, `HttpOnly: true`) remain strictly enforced in the production profile.
+4. **SSL/TLS for External Services:**
+   - MySQL datasource URL in `application-prod.yml` retains `useSSL=true&requireSSL=true&verifyServerCertificate=true`.
+   - Redis configuration adds `ssl.enabled: ${REDIS_SSL_ENABLED:false}` for cloud providers requiring in-transit encryption (e.g. AWS ElastiCache / Redis Cloud).
+
+---
+
+## 7. Testing & Verification Strategy
+
+Following implementation, the following verifications will be conducted:
+
+### 1. Spring Boot Production Property Binding Verification
+- Verify that Spring Boot compiles cleanly with all new properties:
+  ```powershell
+  .\backend\mvnw.cmd -f backend/pom.xml test-compile -B
+  ```
+- Run the full backend test suite to ensure zero regressions in existing tests:
+  ```powershell
+  .\backend\mvnw.cmd -f backend/pom.xml test -B
+  ```
+
+### 2. Angular Production Build Verification
+- Execute `npm --prefix frontend run build` to confirm:
+  - `fileReplacements` successfully executes without path errors.
+  - The output directory `dist/islandride-frontend/browser` is populated.
+  - Style budgets (`anyComponentStyle: 8kB / 16kB`) pass without warning or error.
+  - The compiled bundle contains `production: true` and `/api/v1` (not `http://localhost:8080/api/v1`).
+
+### 3. Docker Context & Build Dry-Run Verification
+- Test Dockerfile syntax and build validity:
+  ```powershell
+  docker compose config
+  ```
+- If Docker daemon is running on host, test dry-run container image build:
+  ```powershell
+  docker build -f infrastructure/docker/frontend.Dockerfile -t islandride-frontend:test .
+  ```
+
+---
+
+## 8. Rollback Strategy
+
+1. **Clean Git Reversion:**
+   - Because Phase 7A only touches configuration files (`.yml`, `.json`, Dockerfiles, `.env.example`), any unexpected issue can be instantly and safely rolled back via:
+     ```powershell
+     git revert HEAD
+     ```
+2. **Zero Database Impact:**
+   - Phase 7A introduces no database schema migrations, column alterations, or data mutations. Rollback requires zero database intervention or data patching.
+
+---
+
+## 9. Acceptance Criteria
+
+Phase 7A will be considered complete and ready for acceptance when:
+
+- [ ] `application-prod.yml` contains `spring.data.redis` with host, port, password, timeout, and SSL parameters.
+- [ ] `application.yml` and `application-prod.yml` contain `islandride.payment` with provider, live-enabled, and razorpay parameter trees.
+- [ ] `frontend/angular.json` includes `fileReplacements` mapping `environment.ts` to `environment.prod.ts` under `configurations.production`.
+- [ ] `infrastructure/docker/frontend.Dockerfile` builds cleanly using the repository root as context.
+- [ ] `.dockerignore` exists at the repository root and excludes `node_modules`, `target`, `.git`, and `storage`.
+- [ ] `.env.example` documents all production configuration variables with accurate naming and unit comments.
+- [ ] All existing backend tests (`.\backend\mvnw.cmd test`) pass 100%.
+- [ ] Frontend production build (`npm --prefix frontend run build`) passes 100% with exit code 0.
+- [ ] Git working tree is clean and changes are committed and pushed to `origin/main`.
+
+---
+
+## 10. Recommended Implementation Sequence
+
+Once approved, the implementation will proceed strictly in this sequence:
+
+1. **Step 1:** Modify `backend/src/main/resources/application.yml` and `backend/src/main/resources/application-prod.yml` to add Redis and Payment gateway configuration.
+2. **Step 2:** Update `.env.example` to align all environment variables and comments.
+3. **Step 3:** Update `frontend/angular.json` to add `fileReplacements` under `configurations.production`.
+4. **Step 4:** Update `infrastructure/docker/frontend.Dockerfile` and create root `.dockerignore`.
+5. **Step 5:** Execute frontend production build (`npm --prefix frontend run build`) to verify bundle generation.
+6. **Step 6:** Execute backend build and test suite (`mvnw test-compile`) to verify configuration syntax.
+7. **Step 7:** Document execution results, commit, and push Phase 7A implementation.
