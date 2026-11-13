@@ -11,42 +11,37 @@ import { BookingSummaryDto } from '../../core/models/booking.models';
   imports: [CommonModule, FormsModule, RouterLink],
   template: `
     <div class="partner-bookings-page">
-      <div class="page-header">
+      <div class="page-head">
         <div>
           <h2>Fleet Reservations & Handovers</h2>
           <p class="muted">Manage customer rental requests, handovers, cash/UPI balance collections and returns</p>
         </div>
-        <div class="filter-row">
-          <input
-            type="text"
-            placeholder="Filter by Business Public ID..."
-            [(ngModel)]="businessFilter"
-            (change)="fetchBookings()"
-            class="biz-filter-input"
-          />
-          <button type="button" class="btn btn-primary" (click)="fetchBookings()">Refresh</button>
+        <div class="actions-row">
+          <button type="button" class="ir-btn ir-btn-outline" (click)="fetchBookings()">
+            Refresh
+          </button>
         </div>
       </div>
 
       @if (loading()) {
-        <div class="card pad">Loading fleet reservations...</div>
+        <div class="ir-card pad">Loading fleet reservations...</div>
       } @else if (error()) {
-        <div class="alert alert-error">{{ error() }}</div>
+        <div class="ir-alert ir-alert-error">{{ error() }}</div>
       } @else if (bookings().length === 0) {
-        <div class="card pad empty-box">
+        <div class="ir-card pad empty-box">
           <h3>No Fleet Bookings Found</h3>
           <p class="muted">No customer reservations have been placed yet for your fleet.</p>
         </div>
       } @else {
-        <div class="table-container card">
-          <table class="data-table">
+        <div class="ir-table-wrap">
+          <table class="ir-table">
             <thead>
               <tr>
                 <th>Booking Ref</th>
                 <th>Vehicle</th>
                 <th>Customer</th>
-                <th>Dates</th>
-                <th>Total / Balance Due</th>
+                <th>Schedule</th>
+                <th>Total / Due</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -86,7 +81,7 @@ import { BookingSummaryDto } from '../../core/models/booking.models';
                     }
                   </td>
                   <td>
-                    <a [routerLink]="['/partner/bookings', b.publicId]" class="btn btn-outline btn-sm">
+                    <a [routerLink]="['/partner/bookings', b.publicId]" class="ir-btn ir-btn-sm ir-btn-outline">
                       Inspect & Act →
                     </a>
                   </td>
@@ -99,35 +94,11 @@ import { BookingSummaryDto } from '../../core/models/booking.models';
     </div>
   `,
   styles: [`
-    .partner-bookings-page { max-width: 1150px; margin: 0 auto; }
-    .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; }
-    .filter-row { display: flex; gap: 0.5rem; align-items: center; }
-    .biz-filter-input { padding: 0.45rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.875rem; width: 220px; }
-    .card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; }
-    .pad { padding: 1.5rem; }
+    .partner-bookings-page { max-width: 1200px; margin: 0 auto; }
     .empty-box { text-align: center; padding: 3rem 1.5rem; }
-    .table-container { overflow-x: auto; }
-    .data-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-    .data-table th, .data-table td { padding: 0.75rem 1rem; border-bottom: 1px solid #e2e8f0; text-align: left; }
-    .data-table th { background: #f8fafc; font-weight: 600; color: #475569; }
     .balance-due { color: #d97706; font-weight: 600; }
-    .text-success { color: #16a34a; font-weight: 500; }
-    .text-danger { color: #dc2626; }
-    .badge { display: inline-block; font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
-    .badge-success { background: #dcfce7; color: #166534; }
-    .badge-warning { background: #fef3c7; color: #92400e; }
-    .badge-info { background: #e0f2fe; color: #0369a1; }
-    .badge-danger { background: #fee2e2; color: #991b1b; }
-    .badge-neutral { background: #f1f5f9; color: #475569; }
-    .btn { padding: 0.45rem 0.9rem; border-radius: 6px; font-weight: 600; cursor: pointer; border: none; font-size: 0.8125rem; }
-    .btn-primary { background: #0284c7; color: #fff; }
-    .btn-outline { background: transparent; border: 1px solid #cbd5e1; color: #0284c7; text-decoration: none; }
-    .btn-outline:hover { background: #f0f9ff; border-color: #0284c7; }
-    .btn-sm { padding: 0.35rem 0.65rem; }
-    .small { font-size: 0.75rem; }
-    .muted { color: #64748b; }
-    .mt-xs { margin-top: 0.2rem; }
-    .alert-error { background: #fee2e2; color: #991b1b; padding: 0.75rem; border-radius: 6px; }
+    .text-success { color: #166534; font-weight: 500; }
+    .text-danger { color: #991b1b; }
   `]
 })
 export class PartnerBookingsListComponent implements OnInit {
@@ -136,7 +107,6 @@ export class PartnerBookingsListComponent implements OnInit {
   bookings = signal<BookingSummaryDto[]>([]);
   loading = signal<boolean>(true);
   error = signal<string | null>(null);
-  businessFilter = '';
 
   ngOnInit(): void {
     this.fetchBookings();
@@ -144,7 +114,7 @@ export class PartnerBookingsListComponent implements OnInit {
 
   fetchBookings(): void {
     this.loading.set(true);
-    this.partnerBookingService.listBookings(this.businessFilter.trim() || undefined, 0, 30).subscribe({
+    this.partnerBookingService.listBookings(undefined, 0, 50).subscribe({
       next: (res) => {
         this.bookings.set(res.content);
         this.loading.set(false);
@@ -166,14 +136,14 @@ export class PartnerBookingsListComponent implements OnInit {
       case 'AWAITING_PARTNER_APPROVAL':
       case 'APPROVED':
       case 'PENDING_PAYMENT':
-        return 'badge-warning';
+        return 'badge-warn';
       case 'CANCELLED':
       case 'REJECTED':
       case 'EXPIRED':
       case 'NO_SHOW':
         return 'badge-danger';
       default:
-        return 'badge-neutral';
+        return 'badge';
     }
   }
 }

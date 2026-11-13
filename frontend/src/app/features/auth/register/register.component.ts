@@ -9,87 +9,88 @@ import { AuthService } from '../../../core/services/auth.service';
   standalone: true,
   imports: [CommonModule, ReactiveFormsModule, RouterLink],
   template: `
-    <div class="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div class="sm:mx-auto sm:w-full sm:max-w-md">
-        <h2 class="text-center text-3xl font-extrabold text-slate-900 tracking-tight">
-          Create Tourist Account
-        </h2>
-        <p class="mt-2 text-center text-sm text-slate-600">
-          Sign up to explore Andaman & Nicobar on two wheels
-        </p>
-      </div>
+    <div class="auth-page">
+      <div class="auth-card-wrap">
+        <div class="auth-header">
+          <h2>Create Tourist Account</h2>
+          <p class="muted">Sign up to explore Andaman & Nicobar on two and four wheels</p>
+        </div>
 
-      <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div class="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10 border border-slate-200">
+        <div class="ir-card pad auth-card">
           @if (errorMessage()) {
-            <div class="mb-4 p-3 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm">
+            <div class="ir-alert ir-alert-error">
               {{ errorMessage() }}
             </div>
           }
           @if (successMessage()) {
-            <div class="mb-4 p-3 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-700 text-sm">
+            <div class="ir-alert ir-alert-success">
               {{ successMessage() }}
             </div>
           }
 
-          <form [formGroup]="registerForm" (ngSubmit)="onSubmit()" class="space-y-4">
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <label class="block text-sm font-medium text-slate-700">First Name</label>
+          <form [formGroup]="registerForm" (ngSubmit)="onSubmit()">
+            <div class="field-row">
+              <div class="field">
+                <label for="reg-fname">First Name</label>
                 <input
+                  id="reg-fname"
                   type="text"
                   formControlName="firstName"
                   required
-                  class="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm focus:ring-emerald-500 focus:border-emerald-500"
+                  class="ir-input"
                 />
               </div>
-              <div>
-                <label class="block text-sm font-medium text-slate-700">Last Name</label>
+              <div class="field">
+                <label for="reg-lname">Last Name</label>
                 <input
+                  id="reg-lname"
                   type="text"
                   formControlName="lastName"
                   required
-                  class="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm focus:ring-emerald-500 focus:border-emerald-500"
+                  class="ir-input"
                 />
               </div>
             </div>
 
-            <div>
-              <label class="block text-sm font-medium text-slate-700">Email Address</label>
+            <div class="field">
+              <label for="reg-email">Email Address</label>
               <input
+                id="reg-email"
                 type="email"
                 formControlName="email"
                 required
-                class="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm focus:ring-emerald-500 focus:border-emerald-500"
+                class="ir-input"
               />
             </div>
 
-            <div>
-              <label class="block text-sm font-medium text-slate-700">Phone (optional)</label>
+            <div class="field">
+              <label for="reg-phone">Phone (optional)</label>
               <input
+                id="reg-phone"
                 type="tel"
                 formControlName="phone"
-                placeholder="+919876543210"
-                class="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm focus:ring-emerald-500 focus:border-emerald-500"
+                placeholder="+91 98765 43210"
+                class="ir-input"
               />
             </div>
 
-            <div>
-              <label class="block text-sm font-medium text-slate-700">Password</label>
+            <div class="field">
+              <label for="reg-pass">Password</label>
               <input
+                id="reg-pass"
                 type="password"
                 formControlName="password"
                 required
-                class="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm focus:ring-emerald-500 focus:border-emerald-500"
+                class="ir-input"
               />
-              <p class="mt-1 text-xs text-slate-500">Minimum 8 characters</p>
+              <span class="muted small mt-xs">Minimum 8 characters</span>
             </div>
 
-            <div>
+            <div class="submit-wrap">
               <button
                 type="submit"
                 [disabled]="registerForm.invalid || isLoading()"
-                class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
+                class="ir-btn ir-btn-primary full-width"
               >
                 @if (isLoading()) {
                   <span>Creating account...</span>
@@ -100,10 +101,10 @@ import { AuthService } from '../../../core/services/auth.service';
             </div>
           </form>
 
-          <div class="mt-6 border-t border-slate-200 pt-6 text-center text-sm">
-            <p class="text-slate-600">
+          <div class="auth-footer-links">
+            <p class="muted small">
               Already have an account?
-              <a routerLink="/auth/login" class="font-medium text-emerald-600 hover:text-emerald-500">
+              <a routerLink="/auth/login" class="link-btn small">
                 Sign in
               </a>
             </p>
@@ -112,6 +113,40 @@ import { AuthService } from '../../../core/services/auth.service';
       </div>
     </div>
   `,
+  styles: [`
+    .auth-page {
+      min-height: calc(100vh - 180px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1rem;
+    }
+    .auth-card-wrap {
+      width: 100%;
+      max-width: 480px;
+    }
+    .auth-header {
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+    .auth-header h2 {
+      font-size: 1.65rem;
+      margin-bottom: 0.35rem;
+    }
+    .auth-card {
+      padding: 2rem;
+      background: #ffffff;
+    }
+    .submit-wrap {
+      margin-top: 1rem;
+    }
+    .auth-footer-links {
+      margin-top: 1.5rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--ir-border);
+      text-align: center;
+    }
+  `]
 })
 export class RegisterComponent {
   private readonly fb = inject(FormBuilder);
@@ -160,4 +195,3 @@ export class RegisterComponent {
       });
   }
 }
-

@@ -158,44 +158,49 @@ import { PartnerFinancialOverviewDto } from '../../core/models/booking.models';
   `,
   styles: [`
     .financials-container { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
-    .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
-    .subtitle { color: #64748b; font-size: 0.95rem; margin-top: 0.25rem; }
+    .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; gap: 1rem; flex-wrap: wrap; }
+    .header-row h2 { font-size: 1.625rem; font-weight: 700; color: var(--ir-navy); margin: 0; }
+    .subtitle { color: var(--ir-muted); font-size: 0.875rem; margin-top: 0.25rem; }
     .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
-    .card { background: #fff; border-radius: 8px; border: 1px solid #e2e8f0; padding: 1.25rem; }
+    .card { background: var(--ir-surface); border-radius: var(--ir-radius-md); border: 1px solid var(--ir-border); padding: 1.25rem; box-shadow: var(--ir-shadow-sm); }
     .kpi-card { display: flex; flex-direction: column; gap: 0.35rem; }
-    .kpi-card.highlight { border-color: #10b981; background: #f0fdf4; }
-    .kpi-label { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: #64748b; }
-    .kpi-value { font-size: 1.5rem; font-weight: 700; }
-    .kpi-sub { font-size: 0.75rem; color: #94a3b8; }
-    .text-primary { color: #0284c7; }
-    .text-secondary { color: #6366f1; }
-    .text-success { color: #059669; }
+    .kpi-card.highlight { border-color: var(--ir-teal); background: var(--ir-sea-mist); }
+    .kpi-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--ir-muted); letter-spacing: 0.04em; }
+    .kpi-value { font-size: 1.5rem; font-weight: 700; line-height: 1.2; }
+    .kpi-sub { font-size: 0.75rem; color: var(--ir-muted); }
+    .text-primary { color: var(--ir-navy); }
+    .text-secondary { color: var(--ir-charcoal); }
+    .text-success { color: var(--ir-teal); }
     .text-accent { color: #d97706; }
-    .text-warning { color: #dc2626; }
-    .text-muted { color: #64748b; }
-    .text-danger { color: #ef4444; }
-    .font-mono { font-family: monospace; }
+    .text-warning { color: #b45309; }
+    .text-muted { color: var(--ir-muted); }
+    .text-danger { color: var(--ir-coral); }
+    .font-mono { font-family: monospace; font-size: 0.8125rem; }
     .font-semibold { font-weight: 600; }
     .collections-card { margin-bottom: 1.5rem; }
+    .collections-card h3 { font-size: 1.125rem; font-weight: 700; color: var(--ir-navy); margin: 0 0 0.5rem 0; }
     .channels-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.75rem; }
-    .channel-item { display: flex; justify-content: space-between; padding: 0.5rem; background: #f8fafc; border-radius: 6px; }
-    .channel-label { color: #475569; font-size: 0.9rem; }
-    .channel-val { font-weight: 600; color: #0f172a; }
+    @media (max-width: 600px) { .channels-grid { grid-template-columns: 1fr; } }
+    .channel-item { display: flex; justify-content: space-between; padding: 0.75rem 1rem; background: var(--ir-sea-mist); border-radius: var(--ir-radius-sm); border: 1px solid #c2e0d8; }
+    .channel-label { color: var(--ir-charcoal); font-size: 0.875rem; font-weight: 500; }
+    .channel-val { font-weight: 700; color: var(--ir-navy); }
     .table-card { margin-bottom: 1.5rem; padding: 0; overflow: hidden; }
-    .card-header { padding: 1rem 1.25rem; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
+    .card-header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--ir-border); background: var(--ir-sea-mist); }
+    .card-header h3 { font-size: 1.05rem; font-weight: 700; color: var(--ir-navy); margin: 0; }
     .table-responsive { overflow-x: auto; }
     .data-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-    .data-table th, .data-table td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid #f1f5f9; }
-    .data-table th { background: #f8fafc; font-weight: 600; color: #475569; font-size: 0.8rem; text-transform: uppercase; }
-    .badge { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+    .data-table th, .data-table td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid var(--ir-border); }
+    .data-table th { background: var(--ir-sea-mist); font-weight: 600; color: var(--ir-navy); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .data-table tr:hover td { background: #f8fafc; }
+    .badge { display: inline-block; padding: 0.2rem 0.5rem; border-radius: var(--ir-radius-sm); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
     .badge.accrued, .badge.initiated { background: #fef3c7; color: #b45309; }
     .badge.settled, .badge.completed { background: #d1fae5; color: #065f46; }
-    .badge.processing { background: #e0e7ff; color: #3730a3; }
+    .badge.processing { background: #e0f2fe; color: #0369a1; }
     .badge.voided, .badge.failed { background: #fee2e2; color: #991b1b; }
-    .btn { padding: 0.5rem 1rem; border-radius: 6px; font-weight: 600; cursor: pointer; border: none; }
-    .btn-secondary { background: #f1f5f9; color: #334155; }
-    .btn-secondary:hover { background: #e2e8f0; }
-    .alert-error { background: #fee2e2; color: #991b1b; padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; }
+    .btn { padding: 0.5rem 1rem; border-radius: var(--ir-radius-sm); font-weight: 600; cursor: pointer; border: none; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; }
+    .btn-secondary { background: #ffffff; color: var(--ir-charcoal); border: 1px solid var(--ir-border); }
+    .btn-secondary:hover { background: #f1f5f9; border-color: #cbd5e1; }
+    .alert-error { background: #fee2e2; color: #991b1b; padding: 0.75rem 1rem; border-radius: var(--ir-radius-sm); margin-bottom: 1rem; }
   `]
 })
 export class PartnerFinancialsComponent implements OnInit {

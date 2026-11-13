@@ -9,67 +9,57 @@ import { AuthService } from '../../../core/services/auth.service';
   standalone: true,
   imports: [CommonModule, ReactiveFormsModule, RouterLink],
   template: `
-    <div class="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div class="sm:mx-auto sm:w-full sm:max-w-md">
-        <h2 class="text-center text-3xl font-extrabold text-slate-900 tracking-tight">
-          IslandRide Portal Login
-        </h2>
-        <p class="mt-2 text-center text-sm text-slate-600">
-          Access your Tourist, Partner, or Governance console
-        </p>
-      </div>
+    <div class="auth-page">
+      <div class="auth-card-wrap">
+        <div class="auth-header">
+          <h2>IslandRide Portal Login</h2>
+          <p class="muted">Access your Tourist, Partner, or Governance console</p>
+        </div>
 
-      <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div class="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10 border border-slate-200">
+        <div class="ir-card pad auth-card">
           @if (errorMessage()) {
-            <div class="mb-4 p-3 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm">
+            <div class="ir-alert ir-alert-error">
               {{ errorMessage() }}
             </div>
           }
 
-          <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="space-y-6">
-            <div>
-              <label for="email" class="block text-sm font-medium text-slate-700">Email address</label>
-              <div class="mt-1">
-                <input
-                  id="email"
-                  type="email"
-                  formControlName="email"
-                  autocomplete="email"
-                  required
-                  class="appearance-none block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
-                  placeholder="name@example.com"
-                />
-              </div>
+          <form [formGroup]="loginForm" (ngSubmit)="onSubmit()">
+            <div class="field">
+              <label for="email">Email address</label>
+              <input
+                id="email"
+                type="email"
+                formControlName="email"
+                autocomplete="email"
+                required
+                class="ir-input"
+                placeholder="name@example.com"
+              />
             </div>
 
-            <div>
-              <label for="password" class="block text-sm font-medium text-slate-700">Password</label>
-              <div class="mt-1">
-                <input
-                  id="password"
-                  type="password"
-                  formControlName="password"
-                  autocomplete="current-password"
-                  required
-                  class="appearance-none block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
-                />
-              </div>
+            <div class="field">
+              <label for="password">Password</label>
+              <input
+                id="password"
+                type="password"
+                formControlName="password"
+                autocomplete="current-password"
+                required
+                class="ir-input"
+              />
             </div>
 
-            <div class="flex items-center justify-between">
-              <div class="text-sm">
-                <a routerLink="/auth/forgot-password" class="font-medium text-emerald-600 hover:text-emerald-500">
-                  Forgot your password?
-                </a>
-              </div>
+            <div class="forgot-row">
+              <a routerLink="/auth/forgot-password" class="link-btn small">
+                Forgot your password?
+              </a>
             </div>
 
-            <div>
+            <div class="submit-wrap">
               <button
                 type="submit"
                 [disabled]="loginForm.invalid || isLoading()"
-                class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50"
+                class="ir-btn ir-btn-primary full-width"
               >
                 @if (isLoading()) {
                   <span>Signing in...</span>
@@ -80,16 +70,16 @@ import { AuthService } from '../../../core/services/auth.service';
             </div>
           </form>
 
-          <div class="mt-6 border-t border-slate-200 pt-6 text-center text-sm">
-            <p class="text-slate-600">
+          <div class="auth-footer-links">
+            <p class="muted small">
               New tourist?
-              <a routerLink="/auth/register" class="font-medium text-emerald-600 hover:text-emerald-500">
+              <a routerLink="/auth/register" class="link-btn small">
                 Create an account
               </a>
             </p>
-            <p class="mt-2 text-slate-600">
+            <p class="muted small mt-xs">
               Vehicle rental agency?
-              <a routerLink="/partner/register" class="font-medium text-emerald-600 hover:text-emerald-500">
+              <a routerLink="/partner/register" class="link-btn small">
                 Partner Onboarding
               </a>
             </p>
@@ -98,6 +88,45 @@ import { AuthService } from '../../../core/services/auth.service';
       </div>
     </div>
   `,
+  styles: [`
+    .auth-page {
+      min-height: calc(100vh - 180px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1rem;
+    }
+    .auth-card-wrap {
+      width: 100%;
+      max-width: 440px;
+    }
+    .auth-header {
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+    .auth-header h2 {
+      font-size: 1.65rem;
+      margin-bottom: 0.35rem;
+    }
+    .auth-card {
+      padding: 2rem;
+      background: #ffffff;
+    }
+    .forgot-row {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 1.25rem;
+    }
+    .submit-wrap {
+      margin-top: 0.5rem;
+    }
+    .auth-footer-links {
+      margin-top: 1.5rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--ir-border);
+      text-align: center;
+    }
+  `]
 })
 export class LoginComponent {
   private readonly fb = inject(FormBuilder);
@@ -131,7 +160,6 @@ export class LoginComponent {
           return;
         }
 
-        // Navigate based on primary role
         const roles = res.user.roles || [];
         if (roles.some((r) => r.includes('ADMIN') || r === 'ROLE_SUPPORT_AGENT')) {
           this.router.navigate(['/admin']);
@@ -154,4 +182,3 @@ export class LoginComponent {
     });
   }
 }
-

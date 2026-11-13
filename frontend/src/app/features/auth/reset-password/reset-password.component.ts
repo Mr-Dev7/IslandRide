@@ -9,57 +9,55 @@ import { AuthService } from '../../../core/services/auth.service';
   standalone: true,
   imports: [CommonModule, ReactiveFormsModule, RouterLink],
   template: `
-    <div class="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div class="sm:mx-auto sm:w-full sm:max-w-md">
-        <h2 class="text-center text-3xl font-extrabold text-slate-900 tracking-tight">
-          Set New Password
-        </h2>
-        <p class="mt-2 text-center text-sm text-slate-600">
-          Enter your recovery token and new account password
-        </p>
-      </div>
+    <div class="auth-page">
+      <div class="auth-card-wrap">
+        <div class="auth-header">
+          <h2>Set New Password</h2>
+          <p class="muted">Enter your recovery token and new account password</p>
+        </div>
 
-      <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div class="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10 border border-slate-200">
+        <div class="ir-card pad auth-card">
           @if (errorMessage()) {
-            <div class="mb-4 p-3 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm">
+            <div class="ir-alert ir-alert-error">
               {{ errorMessage() }}
             </div>
           }
           @if (successMessage()) {
-            <div class="mb-4 p-3 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-700 text-sm">
+            <div class="ir-alert ir-alert-success">
               {{ successMessage() }}
             </div>
           }
 
-          <form [formGroup]="resetForm" (ngSubmit)="onSubmit()" class="space-y-4">
-            <div>
-              <label class="block text-sm font-medium text-slate-700">Reset Token</label>
+          <form [formGroup]="resetForm" (ngSubmit)="onSubmit()">
+            <div class="field">
+              <label for="token">Reset Token</label>
               <input
+                id="token"
                 type="text"
                 formControlName="token"
                 required
                 placeholder="UUID or token from email"
-                class="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm focus:ring-emerald-500 focus:border-emerald-500"
+                class="ir-input"
               />
             </div>
 
-            <div>
-              <label class="block text-sm font-medium text-slate-700">New Password</label>
+            <div class="field">
+              <label for="newPassword">New Password</label>
               <input
+                id="newPassword"
                 type="password"
                 formControlName="newPassword"
                 required
-                class="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm sm:text-sm focus:ring-emerald-500 focus:border-emerald-500"
+                class="ir-input"
               />
-              <p class="mt-1 text-xs text-slate-500">Minimum 8 characters</p>
+              <span class="field-hint">Minimum 8 characters</span>
             </div>
 
-            <div>
+            <div class="submit-wrap">
               <button
                 type="submit"
                 [disabled]="resetForm.invalid || isLoading()"
-                class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
+                class="ir-btn ir-btn-primary full-width"
               >
                 @if (isLoading()) {
                   <span>Updating password...</span>
@@ -70,8 +68,8 @@ import { AuthService } from '../../../core/services/auth.service';
             </div>
           </form>
 
-          <div class="mt-6 border-t border-slate-200 pt-6 text-center text-sm">
-            <a routerLink="/auth/login" class="font-medium text-slate-600 hover:text-slate-900">
+          <div class="auth-footer-links">
+            <a routerLink="/auth/login" class="link-btn small">
               &larr; Back to login
             </a>
           </div>
@@ -79,6 +77,81 @@ import { AuthService } from '../../../core/services/auth.service';
       </div>
     </div>
   `,
+  styles: [`
+    .auth-page {
+      min-height: calc(100vh - 180px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1rem;
+    }
+    .auth-card-wrap {
+      width: 100%;
+      max-width: 440px;
+    }
+    .auth-header {
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+    .auth-header h2 {
+      margin-bottom: 0.25rem;
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: var(--ir-navy);
+      letter-spacing: -0.02em;
+    }
+    .muted {
+      color: var(--ir-muted);
+      font-size: 0.875rem;
+      margin: 0;
+    }
+    .auth-card {
+      background: var(--ir-surface);
+      border-radius: var(--ir-radius-lg);
+      border: 1px solid var(--ir-border);
+      box-shadow: var(--ir-shadow-md);
+    }
+    .field {
+      margin-bottom: 1.125rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.375rem;
+    }
+    .field label {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--ir-charcoal);
+    }
+    .field-hint {
+      font-size: 0.75rem;
+      color: var(--ir-muted);
+    }
+    .submit-wrap {
+      margin-top: 1.5rem;
+    }
+    .full-width {
+      width: 100%;
+    }
+    .auth-footer-links {
+      margin-top: 1.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--ir-border);
+      text-align: center;
+    }
+    .link-btn {
+      color: var(--ir-teal);
+      text-decoration: none;
+      font-weight: 600;
+      transition: color var(--ir-transition);
+    }
+    .link-btn:hover {
+      color: #0f8275;
+      text-decoration: underline;
+    }
+    .small {
+      font-size: 0.875rem;
+    }
+  `]
 })
 export class ResetPasswordComponent {
   private readonly fb = inject(FormBuilder);
@@ -117,4 +190,3 @@ export class ResetPasswordComponent {
     });
   }
 }
-
