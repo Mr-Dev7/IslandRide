@@ -3,13 +3,23 @@ import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { BookingService } from '../../../core/services/booking.service';
+import { AuthService } from '../../../core/services/auth.service';
+import { RazorpayLoaderService } from '../../../core/services/razorpay-loader.service';
 import {
   BookingCreationResult,
+  GatewayCheckoutOrderResponse,
   InventoryHoldResponse,
   MockPaymentSimulateResponse,
   PaymentMode,
+  PaymentVerificationResponse,
   PricePreviewResponse,
 } from '../../../core/models/booking.models';
+import {
+  RazorpayConstructor,
+  RazorpayErrorResponse,
+  RazorpayOptions,
+  RazorpayPaymentSuccessResponse,
+} from '../../../core/models/razorpay.models';
 
 @Component({
   selector: 'app-tourist-checkout',
@@ -127,6 +137,10 @@ import {
                 </label>
               </div>
 
+              @if (paymentStatus() && submitting()) {
+                <div class="alert alert-info mt-sm">{{ paymentStatus() }}</div>
+              }
+
               @if (bookingError()) {
                 <div class="alert alert-error mt-sm">{{ bookingError() }}</div>
               }
@@ -138,9 +152,11 @@ import {
                 (click)="proceedToPayment()"
               >
                 @if (submitting()) {
-                  <span>Processing Reservation...</span>
+                  <span>{{ paymentStatus() || 'Processing Reservation...' }}</span>
                 } @else if (h.bookingMode === 'APPROVAL') {
                   <span>Request Booking Approval from Partner</span>
+                } @else if (createdBookingPublicId()) {
+                  <span>Retry Payment · ₹{{ currentQuote().advanceDueNow | number: '1.2-2' }}</span>
                 } @else {
                   <span>Proceed to Payment · ₹{{ currentQuote().advanceDueNow | number: '1.2-2' }}</span>
                 }
@@ -344,12 +360,15 @@ export class TouristCheckoutComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly bookingService = inject(BookingService);
+  private readonly authService = inject(AuthService);
+  private readonly razorpayLoader = inject(RazorpayLoaderService);
 
   holdPublicId = '';
   hold = signal<InventoryHoldResponse | null>(null);
   loading = signal<boolean>(true);
   error = signal<string | null>(null);
   bookingError = signal<string | null>(null);
+  paymentStatus = signal<string | null>(null);
   submitting = signal<boolean>(false);
   simulating = signal<boolean>(false);
   simulatorStatus = signal<string | null>(null);
@@ -362,7 +381,7 @@ export class TouristCheckoutComponent implements OnInit, OnDestroy {
   dlConfirmed = false;
   selectedPaymentMode: PaymentMode = 'FULL';
 
-  activeCheckoutOrder = signal<any | null>(null);
+  activeCheckoutOrder = signal<GatewayCheckoutOrderResponse | null>(null);
   createdBookingPublicId = signal<string | null>(null);
 
   ngOnInit(): void {
@@ -448,12 +467,35 @@ export class TouristCheckoutComponent implements OnInit, OnDestroy {
   }
 
   proceedToPayment(): void {
-    if (!this.canSubmit()) {
+    if (!this.canSubmit() || this.submitting()) {
       return;
     }
     this.submitting.set(true);
     this.bookingError.set(null);
+    this.paymentStatus.set(null);
+
+    // If booking was already created in an earlier attempt, initiate/retry checkout order directly
+    if (this.createdBookingPublicId()) {
+      const bookingPid = this.createdBookingPublicId()!;
+      const idempKey = `retry_pay_${bookingPid}_${Date.now()}`;
+      this.paymentStatus.set('Initializing payment order...');
+
+      this.bookingService.initiateCheckoutOrder(bookingPid, idempKey).subscribe({
+        next: (order: GatewayCheckoutOrderResponse) => {
+          this.handleOrderReceived(order);
+        },
+        error: (err: any) => {
+          this.submitting.set(false);
+          this.paymentStatus.set(null);
+          this.bookingError.set(err?.error?.detail || err?.error?.message || 'Failed to initiate payment order.');
+        },
+      });
+      return;
+    }
+
+    // Initial booking creation
     const idempKey = `bkg_${this.holdPublicId}_${Date.now()}`;
+    this.paymentStatus.set('Processing reservation...');
 
     this.bookingService
       .createBooking(
@@ -470,21 +512,146 @@ export class TouristCheckoutComponent implements OnInit, OnDestroy {
       )
       .subscribe({
         next: (result: BookingCreationResult) => {
-          this.submitting.set(false);
           this.createdBookingPublicId.set(result.booking.summary.publicId);
 
           if (result.checkoutOrder) {
-            this.activeCheckoutOrder.set(result.checkoutOrder);
+            this.handleOrderReceived(result.checkoutOrder);
           } else {
             // APPROVAL workflow or pending partner approval
+            this.submitting.set(false);
+            this.paymentStatus.set(null);
             this.router.navigate(['/tourist/bookings', result.booking.summary.publicId]);
           }
         },
-        error: (err) => {
+        error: (err: any) => {
           this.submitting.set(false);
+          this.paymentStatus.set(null);
           this.bookingError.set(err?.error?.detail || err?.error?.message || 'Failed to create booking.');
         },
       });
+  }
+
+  private handleOrderReceived(order: GatewayCheckoutOrderResponse): void {
+    if (order.gatewayProvider === 'razorpay') {
+      this.launchRazorpay(order);
+    } else {
+      // Mock gateway simulation modal
+      this.submitting.set(false);
+      this.paymentStatus.set(null);
+      this.activeCheckoutOrder.set(order);
+    }
+  }
+
+  private launchRazorpay(order: GatewayCheckoutOrderResponse): void {
+    if (!order.keyId || !order.keyId.trim()) {
+      this.submitting.set(false);
+      this.paymentStatus.set(null);
+      this.bookingError.set('Payment gateway configuration error: public Key ID is missing.');
+      return;
+    }
+
+    this.submitting.set(true);
+    this.paymentStatus.set('Loading secure payment gateway...');
+    this.bookingError.set(null);
+
+    this.razorpayLoader.load().then(
+      (Razorpay) => {
+        try {
+          this.openRazorpayModal(Razorpay, order);
+        } catch (err: any) {
+          this.submitting.set(false);
+          this.paymentStatus.set(null);
+          this.bookingError.set('Failed to initialize Razorpay Checkout: ' + (err?.message || 'Unknown error'));
+        }
+      },
+      (err: any) => {
+        this.submitting.set(false);
+        this.paymentStatus.set(null);
+        this.bookingError.set(
+          err?.message || 'Failed to load Razorpay payment SDK. Please check your internet connection or ad blocker settings.'
+        );
+      }
+    );
+  }
+
+  private openRazorpayModal(Razorpay: RazorpayConstructor, order: GatewayCheckoutOrderResponse): void {
+    const user = this.authService.currentUser();
+    const userName = user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : '';
+
+    const options: RazorpayOptions = {
+      key: order.keyId!,
+      amount: Math.round(order.amount * 100), // paise
+      currency: order.currency || 'INR',
+      name: 'IslandRide',
+      description: `Rental Booking: ${order.bookingReference}`,
+      order_id: order.gatewayOrderId,
+      prefill: {
+        name: userName || undefined,
+        email: user?.email || undefined,
+        contact: this.customerEmergencyContact.trim() || user?.phone || undefined,
+      },
+      theme: {
+        color: '#0f766e',
+      },
+      modal: {
+        ondismiss: () => {
+          this.submitting.set(false);
+          this.paymentStatus.set(null);
+          this.bookingError.set(
+            'Payment was not completed. You can retry before your reservation hold expires.'
+          );
+        },
+      },
+      handler: (response: RazorpayPaymentSuccessResponse) => {
+        this.handlePaymentSuccess(response, order);
+      },
+    };
+
+    const rzp = new Razorpay(options);
+
+    rzp.on('payment.failed', (errResponse: RazorpayErrorResponse) => {
+      this.submitting.set(false);
+      this.paymentStatus.set(null);
+      const reason = errResponse?.error?.description || errResponse?.error?.reason || 'Payment was declined or failed.';
+      this.bookingError.set(`Payment failed: ${reason}. You can retry with another payment method.`);
+    });
+
+    this.paymentStatus.set('Awaiting payment authorization...');
+    rzp.open();
+  }
+
+  private handlePaymentSuccess(
+    response: RazorpayPaymentSuccessResponse,
+    order: GatewayCheckoutOrderResponse
+  ): void {
+    this.submitting.set(true);
+    this.paymentStatus.set('Payment authorized. Verifying cryptographic signature with server...');
+    this.bookingError.set(null);
+
+    const bookingPid = this.createdBookingPublicId() || order.bookingPublicId;
+    const verifyPayload = {
+      bookingPublicId: bookingPid,
+      gatewayOrderId: response.razorpay_order_id,
+      gatewayPaymentId: response.razorpay_payment_id,
+      gatewaySignature: response.razorpay_signature,
+    };
+    const idempKey = `ver_${response.razorpay_order_id}`;
+
+    this.bookingService.verifyPayment(verifyPayload, idempKey).subscribe({
+      next: (_res: PaymentVerificationResponse) => {
+        this.submitting.set(false);
+        this.paymentStatus.set(null);
+        this.router.navigate(['/tourist/bookings', bookingPid]);
+      },
+      error: (err: any) => {
+        this.submitting.set(false);
+        this.paymentStatus.set(null);
+        const errorDetail = err?.error?.detail || err?.error?.message || err?.message || 'Verification failed.';
+        this.bookingError.set(
+          `Payment verification error: ${errorDetail}. If your account was debited, your reservation will be updated automatically via webhook reconciliation.`
+        );
+      },
+    });
   }
 
   simulatePaymentSuccess(order: any): void {
