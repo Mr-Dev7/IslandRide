@@ -152,6 +152,7 @@ export interface GatewayCheckoutOrderResponse {
   bookingReference: string;
   gatewayProvider: string;
   gatewayOrderId: string;
+  keyId?: string | null;
   amount: number;
   currency: string;
   paymentType: PaymentType;
