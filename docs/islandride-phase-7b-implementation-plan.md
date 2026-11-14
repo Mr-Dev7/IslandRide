@@ -197,7 +197,129 @@ The implementation is broken down into structured, isolated, verifiable steps:
 
 ---
 
-## 7. Exact Files Expected to Change
+## 6.1 Phase 7B Step 4 Detailed Specification: Tourist Booking Detail Payment Integration
+
+### 1. Existing Implementation Findings
+- **Component Under Scope:** `frontend/src/app/features/tourist/bookings/tourist-booking-detail.component.ts` (and its template/styles).
+- **Current Flow:**
+  - When a booking has status `PENDING_PAYMENT` or `APPROVED`, the component presents an action banner with a "Pay Online Now" button.
+  - Clicking "Pay Online Now" invokes `openPaymentModal(b)`, which calls `bookingService.initiateCheckoutOrder(b.summary.publicId)`.
+  - When the checkout order response is received, the component sets `activeOrder.set(order)`, which displays the test payment simulator modal unconditionally.
+  - The component does not inject `RazorpayLoaderService` or `AuthService`.
+  - The component does not inspect `order.gatewayProvider` or check for the public `order.keyId`.
+  - Real Razorpay Checkout modal is never initialized or displayed.
+  - Razorpay events (`handler`, `modal.ondismiss`, `payment.failed`) are unhandled.
+  - Error handling relies on browser `alert()` popups rather than inline reactive alerts.
+  - There are currently no unit tests for `TouristBookingDetailComponent` (`tourist-booking-detail.component.spec.ts` does not yet exist).
+
+### 2. Exact Frontend Files Expected to Change
+1. `frontend/src/app/features/tourist/bookings/tourist-booking-detail.component.ts` (Update):
+   - Inject `RazorpayLoaderService` and `AuthService`.
+   - Update action banner visibility to include `b.summary.status === 'PAYMENT_FAILED'` (allowing payment retries directly from booking detail).
+   - Display dynamic button label: `"Retry Payment Online"` when `PAYMENT_FAILED`, and `"Pay Online Now"` when `PENDING_PAYMENT` or `APPROVED`.
+   - Add inline notification alerts: `paymentStatus = signal<string | null>(null)` and `paymentError = signal<string | null>(null)`.
+   - Update `openPaymentModal(b)`:
+     - Check submission guard (`submitting()` / `actionLoading()`).
+     - Pass unique idempotency key: `retry_pay_${b.summary.publicId}_${Date.now()}`.
+     - Branch on `order.gatewayProvider`:
+       - If `'razorpay'`: validate public `keyId`, load SDK via `RazorpayLoaderService`, build strongly typed `RazorpayOptions`, bind callbacks (`handler`, `modal.ondismiss`, `payment.failed`), and open modal.
+       - If `'mock'`: open existing simulation modal (`activeOrder.set(order)`).
+   - Implement `handlePaymentSuccess(response, order, b)`:
+     - Set status: `"Payment authorized. Verifying cryptographic signature with server..."`.
+     - Submit `verifyPayment` payload (`bookingPublicId`, `gatewayOrderId`, `gatewayPaymentId`, `gatewaySignature`) with `Idempotency-Key: ver_${response.razorpay_order_id}`.
+     - On 200 OK: reset submitting state and re-fetch booking details via `fetchBooking()` (which updates booking status to `CONFIRMED` and automatically dismisses the payment banner).
+     - On error: reset submitting state and surface actionable error informing the tourist of automated webhook reconciliation.
+2. `frontend/src/app/features/tourist/bookings/tourist-booking-detail.component.spec.ts` (Create):
+   - Author comprehensive unit tests covering all payment flows, Razorpay SDK initialization, failure modes, modal dismissal, mock simulation, and state refreshes.
+
+### 3. Exact Backend Files Required
+- **Zero backend files.** (No backend changes required).
+- *Rationale:* In Step 1, `PaymentDtos.GatewayCheckoutOrderResponse` was updated to include public `keyId`, and `PaymentOrchestrationService.toCheckoutOrderResponse` was configured to populate it from `PaymentGatewayProperties`. Both `createBookingFromHold` and `initiateOrRetryCheckoutOrder` route through this method. The backend endpoints (`POST /api/v1/tourist/bookings/{bookingPublicId}/payment-order` and `POST /api/v1/tourist/payments/verify`) are already fully implemented, tested, and active.
+
+### 4. API Contracts and Payment Flows
+```
+Tourist Browser (Booking Detail)                 Spring Boot Backend                     Razorpay Gateway
+       │                                                 │                                      │
+       │─── 1. POST .../{publicId}/payment-order ────────▶│                                      │
+       │    (Idempotency-Key: retry_pay_...)             │                                      │
+       │◀── 2. GatewayCheckoutOrderResponse ─────────────│                                      │
+       │    (gatewayProvider, order_id, keyId, amount)   │                                      │
+       │                                                 │                                      │
+       │─── 3. Dynamic SDK Load (RazorpayLoaderService) ───────────────────────────────────────▶│
+       │◀── 4. window.Razorpay constructor resolved ────────────────────────────────────────────│
+       │                                                 │                                      │
+       │─── 5. new Razorpay(options).open() ───────────────────────────────────────────────────▶│
+       │                                                 │                                      │
+       │◀── 6. Tourist completes payment in modal ──────────────────────────────────────────────│
+       │    (razorpay_order_id, payment_id, signature)   │                                      │
+       │                                                 │                                      │
+       │─── 7. POST /api/v1/tourist/payments/verify ────▶│                                      │
+       │    (Idempotency-Key: ver_order_id)              │─── 8. HMAC-SHA256 Signature Check ───│
+       │◀── 9. HTTP 200 PaymentVerificationResponse ─────│    (Booking -> CONFIRMED)            │
+       │                                                 │                                      │
+       │─── 10. fetchBooking() refresh ─────────────────▶│                                      │
+       │◀── 11. Updated BookingDetailDto (CONFIRMED) ────│                                      │
+```
+
+- **Order Initiation Contract:**
+  - Route: `POST /api/v1/tourist/bookings/{bookingPublicId}/payment-order`
+  - Header: `Idempotency-Key: retry_pay_{bookingPublicId}_{timestamp}`
+  - Response: `PaymentDtos.GatewayCheckoutOrderResponse`
+- **Verification Contract:**
+  - Route: `POST /api/v1/tourist/payments/verify`
+  - Header: `Idempotency-Key: ver_{gatewayOrderId}`
+  - Request Body: `PaymentDtos.VerifyPaymentRequest` (`bookingPublicId`, `gatewayOrderId`, `gatewayPaymentId`, `gatewaySignature`)
+  - Response: `PaymentDtos.PaymentVerificationResponse` (`bookingStatus`, `paymentSummaryStatus`, `payment`)
+
+### 5. Error-Handling Strategy
+- **Public Key Missing:** If `order.keyId` is null/empty for `gatewayProvider === 'razorpay'`, abort execution, reset submission flag, and display: *"Payment gateway configuration error: public Key ID is missing."*
+- **SDK Loading Rejection:** If `RazorpayLoaderService.load()` rejects (network error, offline, ad-blocker), catch rejection, reset submission flag, and display error message allowing immediate retry.
+- **Modal Dismissal (`modal.ondismiss`):** Reset `submitting.set(false)` and `paymentStatus.set(null)`, and display: *"Payment was not completed. You can retry before your payment window expires."*
+- **Payment Decline (`payment.failed` event):** Extract reason from `RazorpayErrorResponse` and display: *"Payment failed: {reason}. You can retry with another payment method."*
+- **Verification Failure (HTTP 4xx/5xx):** Display: *"Payment verification error: {error}. If your account was debited, your reservation will be updated automatically via webhook reconciliation."* Do not refresh or clear booking context.
+- **Expired Payment Deadline:** If `paymentDeadlineAt` has elapsed, disable the payment button and display: *"Payment deadline has expired. This reservation is no longer eligible for online payment."*
+
+### 6. Test Scenarios for `TouristBookingDetailComponent`
+1. **Initial Rendering:** Successfully load booking details and render payment action banner for `PENDING_PAYMENT` and `APPROVED` bookings.
+2. **Payment Retry Rendering:** Render payment action banner with `"Retry Payment Online"` for `PAYMENT_FAILED` bookings.
+3. **Ineligible Statuses:** Do NOT render payment action banner for `CONFIRMED`, `ACTIVE`, `COMPLETED`, `CANCELLED`, `REJECTED`, or `EXPIRED` bookings.
+4. **Payment Initiation:** Click "Pay Online Now" -> invokes `bookingService.initiateCheckoutOrder` with unique idempotency key.
+5. **Razorpay Launch:** `gatewayProvider === 'razorpay'` -> loads SDK via `RazorpayLoaderService`, instantiates `Razorpay` with correct options (paise conversion, order ID, prefill user details, `#0f766e` theme), and calls `rzp.open()`.
+6. **Missing Key Guard:** Aborts cleanly and surfaces error if `order.keyId` is missing/empty.
+7. **SDK Load Failure:** Catches SDK loading errors and resets submitting state.
+8. **Successful Verification:** `options.handler` callback calls `bookingService.verifyPayment` with cryptographic signature and idempotency key, and invokes `fetchBooking()` on HTTP 200 to refresh view to `CONFIRMED`.
+9. **Verification Failure:** Handles verification errors without refreshing or navigating, surfacing actionable webhook reconciliation guidance.
+10. **Payment Failed Event:** Listens to `rzp.on('payment.failed')` and surfaces gateway decline reason.
+11. **Modal Dismissal:** Handles `modal.ondismiss` callback and resets submission guard allowing retry.
+12. **Mock Simulation Mode:** `gatewayProvider === 'mock'` opens existing simulation modal rather than loading Razorpay SDK.
+13. **Duplicate Submission Guard:** Disables button and ignores clicks while request is in-flight.
+
+### 7. Security Considerations
+- **Zero Secrets in Frontend:** Strictly no private credentials (`keySecret`, `webhookSecret`) in Angular code.
+- **Server-Authoritative Amounts:** Payment amount is derived exclusively from the server-generated `GatewayCheckoutOrderResponse`.
+- **Server-Side Verification:** Booking confirmation strictly requires server HMAC signature verification at `/api/v1/tourist/payments/verify`.
+- **Payment Idempotency:** Both order creation and signature verification pass unique idempotency keys.
+- **PCI-DSS Compliance:** Zero sensitive card/PAN/CVV data handled in Angular; all entry occurs in Razorpay hosted iframe.
+
+### 8. Build and Verification Commands
+- Focused unit tests:
+  ```powershell
+  npm --prefix frontend run test:ci -- --include="src/app/features/tourist/bookings/tourist-booking-detail.component.spec.ts"
+  ```
+- Full frontend test suite:
+  ```powershell
+  npm --prefix frontend run test:ci
+  ```
+- Frontend production build:
+  ```powershell
+  npm --prefix frontend run build
+  ```
+
+### 9. Risks and Unresolved Questions
+- **Pickup Balance Handling:** In `PARTIAL_ADVANCE` mode, the booking transitions to `CONFIRMED` upon paying the advance amount. The remaining balance (`pickupBalanceDue`) is collected offline at vehicle pickup by partner staff (cash/UPI). Backend `computeRemainingOnlineDue` returns `0` for `CONFIRMED` bookings, preventing online pickup balance collection. This is by design in the current marketplace architecture and is clearly indicated in the Financial Ledger.
+- **Payment Window Deadline:** Bookings in `PENDING_PAYMENT` have a `paymentDeadlineAt`. If this timestamp has passed, the backend rejects order creation with `BusinessRuleException`. The frontend should disable the button and show an expired status notice when `new Date() > new Date(b.summary.paymentDeadlineAt)`.
+
+---
 
 ### Backend Files
 1. `backend/src/main/java/com/islandride/paymentfinance/dto/PaymentDtos.java`
