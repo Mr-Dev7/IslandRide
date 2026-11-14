@@ -46,6 +46,7 @@ import com.islandride.paymentfinance.gateway.MockGatewayAdapter;
 import com.islandride.paymentfinance.gateway.PaymentGatewayAdapter;
 import com.islandride.paymentfinance.gateway.PaymentGatewayProperties;
 import com.islandride.paymentfinance.gateway.PaymentGatewayRegistry;
+import com.islandride.paymentfinance.gateway.RazorpayGatewayAdapter;
 import com.islandride.paymentfinance.gateway.RazorpaySignatureVerifier;
 import com.islandride.paymentfinance.repository.PaymentAttemptRepository;
 import com.islandride.paymentfinance.repository.PaymentRepository;
@@ -722,13 +723,15 @@ public class PaymentOrchestrationService {
         attemptRepository.save(attempt);
     }
 
-    private static GatewayCheckoutOrderResponse toCheckoutOrderResponse(Payment p, Booking b, boolean liveEnabled) {
+    private GatewayCheckoutOrderResponse toCheckoutOrderResponse(Payment p, Booking b, boolean liveEnabled) {
+        String keyId = resolveKeyId(p.getGatewayProvider());
         return new GatewayCheckoutOrderResponse(
                 p.getPublicId(),
                 b.getPublicId(),
                 b.getBookingReference(),
                 p.getGatewayProvider(),
                 p.getGatewayOrderId(),
+                keyId,
                 p.getAmount(),
                 p.getCurrency(),
                 p.getPaymentType(),
@@ -736,5 +739,17 @@ public class PaymentOrchestrationService {
                 p.getGatewayOrderExpiresAt(),
                 b.getPaymentDeadlineAt()
         );
+    }
+
+    private String resolveKeyId(String gatewayProvider) {
+        if (gatewayProvider != null && RazorpayGatewayAdapter.PROVIDER_CODE.equalsIgnoreCase(gatewayProvider.trim())) {
+            if (gatewayProperties != null && gatewayProperties.getRazorpay() != null) {
+                String configuredKeyId = gatewayProperties.getRazorpay().getKeyId();
+                if (configuredKeyId != null && !configuredKeyId.isBlank()) {
+                    return configuredKeyId.trim();
+                }
+            }
+        }
+        return null;
     }
 }

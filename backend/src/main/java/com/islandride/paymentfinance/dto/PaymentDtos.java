@@ -22,6 +22,7 @@ public final class PaymentDtos {
             String bookingReference,
             String gatewayProvider,
             String gatewayOrderId,
+            String keyId,
             BigDecimal amount,
             String currency,
             PaymentType paymentType,
@@ -29,6 +30,22 @@ public final class PaymentDtos {
             Instant orderExpiresAt,
             Instant bookingPaymentDeadlineAt
     ) {
+        public GatewayCheckoutOrderResponse(
+                String paymentPublicId,
+                String bookingPublicId,
+                String bookingReference,
+                String gatewayProvider,
+                String gatewayOrderId,
+                BigDecimal amount,
+                String currency,
+                PaymentType paymentType,
+                boolean liveEnabled,
+                Instant orderExpiresAt,
+                Instant bookingPaymentDeadlineAt
+        ) {
+            this(paymentPublicId, bookingPublicId, bookingReference, gatewayProvider, gatewayOrderId,
+                    null, amount, currency, paymentType, liveEnabled, orderExpiresAt, bookingPaymentDeadlineAt);
+        }
     }
 
     public record VerifyPaymentRequest(

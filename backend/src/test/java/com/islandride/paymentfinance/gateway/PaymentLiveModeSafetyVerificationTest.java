@@ -16,7 +16,10 @@ import com.islandride.inventory.repository.VehicleRepository;
 import com.islandride.inventory.repository.VehicleUnavailabilityRepository;
 import com.islandride.notifications.service.NotificationDispatchService;
 import com.islandride.paymentfinance.domain.Payment;
+import com.islandride.paymentfinance.domain.PaymentMethod;
 import com.islandride.paymentfinance.domain.PaymentStatus;
+import com.islandride.paymentfinance.domain.PaymentType;
+import com.islandride.paymentfinance.dto.PaymentDtos.GatewayCheckoutOrderResponse;
 import com.islandride.paymentfinance.dto.PaymentDtos.MockPaymentSimulateRequest;
 import com.islandride.paymentfinance.repository.PaymentAttemptRepository;
 import com.islandride.paymentfinance.repository.PaymentRepository;
@@ -579,6 +582,180 @@ class PaymentLiveModeSafetyVerificationTest {
             assertThat(res.gatewayOrderId()).isEqualTo("order_mock_test_123");
             assertThat(res.gatewayPaymentId()).startsWith("pay_mock_");
             assertThat(res.checkoutSignature()).isNotEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("Scenario 5: Checkout Order Public Key ID Safety and Leakage Guards")
+    class Scenario5CheckoutOrderKeyIdSafetyGuards {
+
+        @Test
+        @DisplayName("createOrderOnLockedBooking exposes configured public keyId when provider is razorpay")
+        void checkoutOrder_exposesPublicKeyIdWhenRazorpay() {
+            Booking booking = new Booking();
+            booking.setId(42L);
+            booking.setPublicId("bkg_test_pub_42");
+            booking.setBookingReference("IR-RZP-42");
+            booking.setStatus(BookingStatus.PENDING_PAYMENT);
+            booking.setTotalPayableAmount(new BigDecimal("1000.00"));
+            booking.setPickupBalanceDue(BigDecimal.ZERO);
+            booking.setAdvancePaidAmount(BigDecimal.ZERO);
+            booking.setPaymentMode(PaymentMode.FULL);
+            booking.setCurrency("INR");
+            booking.setPaymentDeadlineAt(Instant.now().plus(Duration.ofMinutes(15)));
+
+            Payment existingPayment = new Payment();
+            existingPayment.setId(101L);
+            existingPayment.setPublicId("pay_rzp_existing_101");
+            existingPayment.setBooking(booking);
+            existingPayment.setGatewayProvider("razorpay");
+            existingPayment.setGatewayOrderId("order_rzp_mock_123");
+            existingPayment.setStatus(PaymentStatus.INITIATED);
+            existingPayment.setPaymentMethod(PaymentMethod.GATEWAY);
+            existingPayment.setPaymentType(PaymentType.RENTAL_FULL);
+            existingPayment.setAmount(new BigDecimal("1000.00"));
+            existingPayment.setCurrency("INR");
+            existingPayment.setGatewayOrderExpiresAt(Instant.now().plus(Duration.ofMinutes(10)));
+
+            when(paymentRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+            when(paymentRepository.findByBookingIdOrderByCreatedAtDesc(42L)).thenReturn(List.of(existingPayment));
+
+            GatewayCheckoutOrderResponse response = orchestrationService.createOrderOnLockedBooking(
+                    booking,
+                    10L,
+                    "idemp_key_test_1",
+                    Instant.now()
+            );
+
+            // 1. Exposes public keyId exactly
+            assertThat(response.keyId()).isEqualTo("rzp_test_placeholder_key");
+            assertThat(response.gatewayProvider()).isEqualTo("razorpay");
+            assertThat(response.gatewayOrderId()).isEqualTo("order_rzp_mock_123");
+
+            // 2. Never exposes private secrets in keyId
+            assertThat(response.keyId()).isNotEqualTo("rzp_test_placeholder_secret");
+            assertThat(response.keyId()).isNotEqualTo("rzp_webhook_placeholder_secret");
+
+            // 3. String representation does not contain private secrets
+            assertThat(response.toString()).doesNotContain("rzp_test_placeholder_secret");
+            assertThat(response.toString()).doesNotContain("rzp_webhook_placeholder_secret");
+        }
+
+        @Test
+        @DisplayName("createOrderOnLockedBooking sets null keyId when provider is mock")
+        void checkoutOrder_setsNullKeyIdWhenMock() {
+            PaymentGatewayProperties mockProps = new PaymentGatewayProperties();
+            mockProps.setProvider("mock");
+            mockProps.setLiveEnabled(false);
+            mockProps.getRazorpay().setKeyId("rzp_test_hidden_key");
+            mockProps.getRazorpay().setKeySecret("rzp_test_hidden_secret");
+
+            PaymentOrchestrationService mockOrchestrationService = new PaymentOrchestrationService(
+                    paymentRepository,
+                    attemptRepository,
+                    bookingRepository,
+                    vehicleRepository,
+                    holdRepository,
+                    unavailabilityRepository,
+                    depositRepository,
+                    overbookingRepository,
+                    userRepository,
+                    paymentStateMachine,
+                    registry,
+                    mockProps,
+                    lifecycleService,
+                    bookingPolicyService,
+                    refundOrchestrationService,
+                    notificationDispatchService,
+                    auditLogService
+            );
+
+            Booking booking = new Booking();
+            booking.setId(43L);
+            booking.setPublicId("bkg_test_pub_43");
+            booking.setBookingReference("IR-MCK-43");
+            booking.setStatus(BookingStatus.PENDING_PAYMENT);
+            booking.setTotalPayableAmount(new BigDecimal("1000.00"));
+            booking.setPickupBalanceDue(BigDecimal.ZERO);
+            booking.setAdvancePaidAmount(BigDecimal.ZERO);
+            booking.setPaymentMode(PaymentMode.FULL);
+            booking.setCurrency("INR");
+            booking.setPaymentDeadlineAt(Instant.now().plus(Duration.ofMinutes(15)));
+
+            Payment existingPayment = new Payment();
+            existingPayment.setId(102L);
+            existingPayment.setPublicId("pay_mock_existing_102");
+            existingPayment.setBooking(booking);
+            existingPayment.setGatewayProvider("mock");
+            existingPayment.setGatewayOrderId("order_mock_456");
+            existingPayment.setStatus(PaymentStatus.INITIATED);
+            existingPayment.setPaymentMethod(PaymentMethod.GATEWAY);
+            existingPayment.setPaymentType(PaymentType.RENTAL_FULL);
+            existingPayment.setAmount(new BigDecimal("1000.00"));
+            existingPayment.setCurrency("INR");
+            existingPayment.setGatewayOrderExpiresAt(Instant.now().plus(Duration.ofMinutes(10)));
+
+            when(paymentRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+            when(paymentRepository.findByBookingIdOrderByCreatedAtDesc(43L)).thenReturn(List.of(existingPayment));
+
+            GatewayCheckoutOrderResponse response = mockOrchestrationService.createOrderOnLockedBooking(
+                    booking,
+                    10L,
+                    "idemp_key_test_2",
+                    Instant.now()
+            );
+
+            // Mock mode must not expose any keyId
+            assertThat(response.keyId()).isNull();
+            assertThat(response.gatewayProvider()).isEqualTo("mock");
+        }
+
+        @Test
+        @DisplayName("JSON serialization contains keyId without leaking secrets and supports backward compatibility")
+        void checkoutOrder_jsonSerializationAndBackwardCompatibility() throws Exception {
+            GatewayCheckoutOrderResponse responseWithKey = new GatewayCheckoutOrderResponse(
+                    "pay_pub_1",
+                    "bkg_pub_1",
+                    "IR-REF-1",
+                    "razorpay",
+                    "order_rzp_999",
+                    "rzp_test_public_123",
+                    new BigDecimal("1500.00"),
+                    "INR",
+                    PaymentType.RENTAL_FULL,
+                    false,
+                    Instant.parse("2026-11-14T12:00:00Z"),
+                    Instant.parse("2026-11-14T12:30:00Z")
+            );
+
+            String json = objectMapper.writeValueAsString(responseWithKey);
+
+            // Verify public keyId is serialized
+            assertThat(json).contains("\"keyId\":\"rzp_test_public_123\"");
+            assertThat(json).contains("\"gatewayOrderId\":\"order_rzp_999\"");
+            assertThat(json).contains("\"amount\":1500.00");
+
+            // Verify private field names never exist in JSON
+            assertThat(json).doesNotContain("keySecret");
+            assertThat(json).doesNotContain("webhookSecret");
+
+            // Verify backward-compatible 11-argument constructor
+            GatewayCheckoutOrderResponse legacyResponse = new GatewayCheckoutOrderResponse(
+                    "pay_pub_2",
+                    "bkg_pub_2",
+                    "IR-REF-2",
+                    "mock",
+                    "order_mock_888",
+                    new BigDecimal("2000.00"),
+                    "INR",
+                    PaymentType.RENTAL_FULL,
+                    false,
+                    Instant.parse("2026-11-14T12:00:00Z"),
+                    Instant.parse("2026-11-14T12:30:00Z")
+            );
+
+            assertThat(legacyResponse.keyId()).isNull();
+            assertThat(legacyResponse.gatewayOrderId()).isEqualTo("order_mock_888");
         }
     }
 }
