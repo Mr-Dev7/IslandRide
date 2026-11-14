@@ -12,6 +12,7 @@ import com.islandride.inventory.domain.Vehicle;
 import com.islandride.inventory.domain.VehicleCategory;
 import com.islandride.inventory.domain.VehicleStatus;
 import com.islandride.inventory.dto.ReorderVehicleImagesRequest;
+import com.islandride.inventory.repository.VehicleRepository;
 import com.islandride.partner.domain.Business;
 import com.islandride.partner.domain.VerificationStatus;
 import com.islandride.pricing.dto.SavePricingRuleRequest;
@@ -39,6 +40,7 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -56,6 +58,8 @@ class VehicleMediaAndAvailabilityIntegrationTest {
     private MockMvc mockMvc;
     @Autowired
     private InventoryTestSupport fixtures;
+    @Autowired
+    private VehicleRepository vehicleRepository;
     @Autowired
     private InventoryHoldRepository holdRepository;
 
@@ -272,6 +276,11 @@ class VehicleMediaAndAvailabilityIntegrationTest {
         Location pbHub = fixtures.firstActiveHubForIsland(pb.getId());
         VehicleCategory scooter = fixtures.requireCategoryByCode("SCOOTER");
         Vehicle v = fixtures.saveDirectVehicle(biz, pb, pbHub, scooter, VehicleStatus.ACTIVE, new BigDecimal("500.00"));
+
+        String availTag = "AvailTag" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        v.setTitle(availTag + " " + v.getTitle());
+        vehicleRepository.save(v);
+
         String token = fixtures.bearerToken(owner, biz);
 
         Instant day2 = Instant.now().plus(2, ChronoUnit.DAYS).truncatedTo(ChronoUnit.SECONDS);
@@ -323,6 +332,8 @@ class VehicleMediaAndAvailabilityIntegrationTest {
 
         // 4. Date-range public search excludes vehicle during blocked window, includes when outside
         mockMvc.perform(get("/api/v1/vehicles")
+                        .param("islandId", pb.getId().toString())
+                        .param("q", availTag)
                         .param("startTime", day2.toString())
                         .param("endTime", day3.toString()))
                 .andExpect(status().isOk())
@@ -354,6 +365,8 @@ class VehicleMediaAndAvailabilityIntegrationTest {
                 .andExpect(jsonPath("$.status").value("CANCELLED"));
 
         mockMvc.perform(get("/api/v1/vehicles")
+                        .param("islandId", pb.getId().toString())
+                        .param("q", availTag)
                         .param("startTime", day2.toString())
                         .param("endTime", day3.toString()))
                 .andExpect(status().isOk())

@@ -112,6 +112,13 @@ class Phase5AcceptanceAuditIntegrationTest {
         VehicleCategory scooter = fixtures.requireCategoryByCode("SCOOTER");
         Vehicle activeVehicle = fixtures.saveDirectVehicle(biz, pb, pbHub, scooter, VehicleStatus.ACTIVE, new BigDecimal("550.00"));
         Vehicle draftVehicle = fixtures.saveDirectVehicle(biz, pb, pbHub, scooter, VehicleStatus.DRAFT, new BigDecimal("500.00"));
+
+        String auditTag = "AudTag" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        activeVehicle.setTitle(auditTag + " " + activeVehicle.getTitle());
+        vehicleRepository.save(activeVehicle);
+        draftVehicle.setTitle(auditTag + " " + draftVehicle.getTitle());
+        vehicleRepository.save(draftVehicle);
+
         String token = fixtures.bearerToken(owner, biz);
 
         // Unapproved/DRAFT vehicle public availability must not leak -> 404
@@ -146,6 +153,8 @@ class Phase5AcceptanceAuditIntegrationTest {
                 .andExpect(jsonPath("$.availableForRequestedWindow").value(false));
 
         mockMvc.perform(get("/api/v1/vehicles")
+                        .param("islandId", pb.getId().toString())
+                        .param("q", auditTag)
                         .param("startTime", day2.plus(1, ChronoUnit.HOURS).toString())
                         .param("endTime", day4.minus(1, ChronoUnit.HOURS).toString()))
                 .andExpect(status().isOk())
@@ -153,12 +162,16 @@ class Phase5AcceptanceAuditIntegrationTest {
 
         // Turnaround buffer (60m default) blocks immediate [day4, day6], while day4+60m is free
         mockMvc.perform(get("/api/v1/vehicles")
+                        .param("islandId", pb.getId().toString())
+                        .param("q", auditTag)
                         .param("startTime", day4.toString())
                         .param("endTime", day6.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(0));
 
         mockMvc.perform(get("/api/v1/vehicles")
+                        .param("islandId", pb.getId().toString())
+                        .param("q", auditTag)
                         .param("startTime", day4.plus(60, ChronoUnit.MINUTES).toString())
                         .param("endTime", day6.toString()))
                 .andExpect(status().isOk())

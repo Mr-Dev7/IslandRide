@@ -294,6 +294,12 @@ class VehicleCatalogAndInventoryIntegrationTest {
         Vehicle archV = fixtures.saveDirectVehicle(approvedBiz, pb, pbHub, scooter, VehicleStatus.ARCHIVED, new BigDecimal("300.00"));
         Vehicle hiddenBizActive = fixtures.saveDirectVehicle(unapprovedBiz, pb, pbHub, scooter, VehicleStatus.ACTIVE, new BigDecimal("350.00"));
 
+        String catalogTag = "VisTag" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        for (Vehicle v : List.of(lowScooter, highSuv, draftV, pendingV, pausedV, maintV, suspV, archV, hiddenBizActive)) {
+            v.setTitle(catalogTag + " " + v.getTitle());
+            vehicleRepository.save(v);
+        }
+
         // 1. Non-active vehicles & unapproved business vehicles return 404 directly
         for (Vehicle hidden : List.of(draftV, pendingV, pausedV, maintV, suspV, archV, hiddenBizActive)) {
             mockMvc.perform(get("/api/v1/vehicles/" + hidden.getPublicId()))
@@ -302,6 +308,7 @@ class VehicleCatalogAndInventoryIntegrationTest {
 
         // 2. Public search returns ONLY the 2 valid ACTIVE vehicles (sorted by price asc)
         MvcResult searchRes = mockMvc.perform(get("/api/v1/vehicles")
+                        .param("q", catalogTag)
                         .param("sortBy", "price_asc")
                         .param("page", "0")
                         .param("size", "10"))
