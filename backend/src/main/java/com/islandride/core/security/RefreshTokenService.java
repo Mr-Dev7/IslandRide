@@ -124,6 +124,14 @@ public class RefreshTokenService {
         });
     }
 
+    @Transactional
+    public int revokeAllTokensForUser(Long userId) {
+        if (userId == null) {
+            return 0;
+        }
+        return refreshTokenRepository.revokeAllUserTokens(userId, Instant.now());
+    }
+
     public static String hashToken(String rawToken) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

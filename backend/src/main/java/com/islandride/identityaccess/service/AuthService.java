@@ -183,10 +183,12 @@ public class AuthService {
 
         User user = resetToken.getUser();
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
-        userRepository.save(user);
+        userRepository.saveAndFlush(user);
 
         resetToken.setUsed(true);
-        passwordResetTokenRepository.save(resetToken);
+        passwordResetTokenRepository.saveAndFlush(resetToken);
+
+        refreshTokenService.revokeAllTokensForUser(user.getId());
     }
 
     @Transactional
@@ -199,7 +201,9 @@ public class AuthService {
         }
 
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
-        userRepository.save(user);
+        userRepository.saveAndFlush(user);
+
+        refreshTokenService.revokeAllTokensForUser(user.getId());
     }
 
     @Transactional(readOnly = true)

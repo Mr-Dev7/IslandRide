@@ -6,6 +6,7 @@ import com.islandride.identityaccess.domain.PasswordResetToken;
 import com.islandride.identityaccess.domain.RefreshToken;
 import com.islandride.identityaccess.domain.User;
 import com.islandride.identityaccess.domain.UserStatus;
+import com.islandride.identityaccess.dto.ChangePasswordRequest;
 import com.islandride.identityaccess.dto.ForgotPasswordRequest;
 import com.islandride.identityaccess.dto.LoginRequest;
 import com.islandride.identityaccess.dto.RegisterRequest;
@@ -66,6 +67,9 @@ class AuthenticationIntegrationTest {
 
     @Autowired
     private AuthService authService;
+
+    @Autowired
+    private jakarta.persistence.EntityManager entityManager;
 
     private String testEmail;
     private String testPhone;
@@ -393,6 +397,425 @@ class AuthenticationIntegrationTest {
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(loginReq)))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("SEC-01: Password change revokes all active refresh tokens for that user")
+    void testPasswordChangeRevokesAllActiveRefreshTokens() throws Exception {
+        RegisterRequest registerReq = new RegisterRequest(
+                testEmail,
+                "OldPassword123!",
+                "SecOne",
+                "User",
+                testPhone
+        );
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(registerReq)))
+                .andExpect(status().isCreated());
+
+        // Session 1 login
+        LoginRequest loginReq = new LoginRequest(testEmail, "OldPassword123!");
+        MvcResult login1 = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(loginReq)))
+                .andExpect(status().isOk())
+                .andReturn();
+        Cookie refreshCookie1 = login1.getResponse().getCookie("refresh_token");
+        assertThat(refreshCookie1).isNotNull();
+        String accessToken = objectMapper.readTree(login1.getResponse().getContentAsString()).get("accessToken").asText();
+
+        // Session 2 login (e.g. from second device)
+        MvcResult login2 = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(loginReq)))
+                .andExpect(status().isOk())
+                .andReturn();
+        Cookie refreshCookie2 = login2.getResponse().getCookie("refresh_token");
+        assertThat(refreshCookie2).isNotNull();
+
+        User user = userRepository.findByEmail(testEmail).orElseThrow();
+        List<RefreshToken> activeTokensBefore = refreshTokenRepository.findAllByUserIdAndRevokedFalse(user.getId());
+        assertThat(activeTokensBefore).hasSize(2);
+
+        // Change password successfully
+        ChangePasswordRequest changeReq = new ChangePasswordRequest("OldPassword123!", "NewPassword123!");
+        mockMvc.perform(post("/api/v1/auth/change-password")
+                        .with(csrf())
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(changeReq)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Password updated successfully"));
+
+        // Verify all refresh tokens for user are now revoked in DB
+        List<RefreshToken> activeTokensAfter = refreshTokenRepository.findAllByUserIdAndRevokedFalse(user.getId());
+        assertThat(activeTokensAfter).isEmpty();
+
+        // Verify attempting to refresh with session 1 cookie is rejected (401)
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .with(csrf())
+                        .cookie(refreshCookie1)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+
+        // Verify attempting to refresh with session 2 cookie is rejected (401)
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .with(csrf())
+                        .cookie(refreshCookie2)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+
+        // Verify user can log in with new password and receives a valid active refresh token
+        LoginRequest newLoginReq = new LoginRequest(testEmail, "NewPassword123!");
+        MvcResult newLoginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(newLoginReq)))
+                .andExpect(status().isOk())
+                .andReturn();
+        Cookie newRefreshCookie = newLoginResult.getResponse().getCookie("refresh_token");
+        assertThat(newRefreshCookie).isNotNull();
+        List<RefreshToken> activeTokensNew = refreshTokenRepository.findAllByUserIdAndRevokedFalse(user.getId());
+        assertThat(activeTokensNew).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("SEC-01: Password reset revokes all active refresh tokens for that user")
+    void testPasswordResetRevokesAllActiveRefreshTokens() throws Exception {
+        RegisterRequest registerReq = new RegisterRequest(
+                testEmail,
+                "OldPassword123!",
+                "ResetRevoke",
+                "User",
+                testPhone
+        );
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(registerReq)))
+                .andExpect(status().isCreated());
+
+        // Session 1 login
+        LoginRequest loginReq = new LoginRequest(testEmail, "OldPassword123!");
+        MvcResult login1 = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(loginReq)))
+                .andExpect(status().isOk())
+                .andReturn();
+        Cookie refreshCookie1 = login1.getResponse().getCookie("refresh_token");
+        assertThat(refreshCookie1).isNotNull();
+
+        // Session 2 login
+        MvcResult login2 = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(loginReq)))
+                .andExpect(status().isOk())
+                .andReturn();
+        Cookie refreshCookie2 = login2.getResponse().getCookie("refresh_token");
+        assertThat(refreshCookie2).isNotNull();
+
+        User user = userRepository.findByEmail(testEmail).orElseThrow();
+        assertThat(refreshTokenRepository.findAllByUserIdAndRevokedFalse(user.getId())).hasSize(2);
+
+        // Create explicit valid reset token
+        String rawResetToken = UUID.randomUUID().toString();
+        PasswordResetToken resetToken = new PasswordResetToken();
+        resetToken.setUser(user);
+        resetToken.setTokenHash(RefreshTokenService.hashToken(rawResetToken));
+        resetToken.setExpiresAt(Instant.now().plus(15, ChronoUnit.MINUTES));
+        resetToken.setUsed(false);
+        passwordResetTokenRepository.save(resetToken);
+
+        // Reset password via endpoint
+        ResetPasswordRequest resetReq = new ResetPasswordRequest(rawResetToken, "BrandNewPassword123!");
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(resetReq)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Password has been successfully updated"));
+
+        // Verify all refresh tokens for user are now revoked in DB
+        List<RefreshToken> activeTokensAfter = refreshTokenRepository.findAllByUserIdAndRevokedFalse(user.getId());
+        assertThat(activeTokensAfter).isEmpty();
+
+        // Verify attempting to refresh with session 1 cookie is rejected (401)
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .with(csrf())
+                        .cookie(refreshCookie1)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+
+        // Verify attempting to refresh with session 2 cookie is rejected (401)
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .with(csrf())
+                        .cookie(refreshCookie2)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+
+        // Verify user can log in with new password
+        LoginRequest newLoginReq = new LoginRequest(testEmail, "BrandNewPassword123!");
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(newLoginReq)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("SEC-01: Other users' refresh tokens remain valid when one user changes or resets password")
+    void testOtherUsersRefreshTokensRemainValidOnPasswordChangeAndReset() throws Exception {
+        String emailUserA = "user_a_" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
+        String emailUserB = "user_b_" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
+
+        // Register user A
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new RegisterRequest(emailUserA, "PassUserA123!", "Alice", "User", null))))
+                .andExpect(status().isCreated());
+
+        // Register user B
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new RegisterRequest(emailUserB, "PassUserB123!", "Bob", "User", null))))
+                .andExpect(status().isCreated());
+
+        // Login user A
+        MvcResult loginA = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new LoginRequest(emailUserA, "PassUserA123!"))))
+                .andExpect(status().isOk())
+                .andReturn();
+        Cookie cookieA = loginA.getResponse().getCookie("refresh_token");
+        String accessTokenA = objectMapper.readTree(loginA.getResponse().getContentAsString()).get("accessToken").asText();
+
+        // Login user B
+        MvcResult loginB = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new LoginRequest(emailUserB, "PassUserB123!"))))
+                .andExpect(status().isOk())
+                .andReturn();
+        Cookie cookieB = loginB.getResponse().getCookie("refresh_token");
+
+        User userA = userRepository.findByEmail(emailUserA).orElseThrow();
+        User userB = userRepository.findByEmail(emailUserB).orElseThrow();
+
+        assertThat(refreshTokenRepository.findAllByUserIdAndRevokedFalse(userA.getId())).hasSize(1);
+        assertThat(refreshTokenRepository.findAllByUserIdAndRevokedFalse(userB.getId())).hasSize(1);
+
+        // User A changes password
+        ChangePasswordRequest changeReq = new ChangePasswordRequest("PassUserA123!", "NewPassUserA123!");
+        mockMvc.perform(post("/api/v1/auth/change-password")
+                        .with(csrf())
+                        .header("Authorization", "Bearer " + accessTokenA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(changeReq)))
+                .andExpect(status().isOk());
+
+        // Verify User A's token is revoked
+        assertThat(refreshTokenRepository.findAllByUserIdAndRevokedFalse(userA.getId())).isEmpty();
+
+        // Verify User B's token is NOT revoked and still active
+        List<RefreshToken> activeTokensB = refreshTokenRepository.findAllByUserIdAndRevokedFalse(userB.getId());
+        assertThat(activeTokensB).hasSize(1);
+        assertThat(activeTokensB.get(0).isRevoked()).isFalse();
+
+        // User B can still rotate their token normally
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .with(csrf())
+                        .cookie(cookieB)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("SEC-01: Failed password changes do not revoke tokens")
+    void testFailedPasswordChangeDoesNotRevokeTokens() throws Exception {
+        RegisterRequest registerReq = new RegisterRequest(
+                testEmail,
+                "CorrectPassword123!",
+                "FailChange",
+                "User",
+                testPhone
+        );
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(registerReq)))
+                .andExpect(status().isCreated());
+
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new LoginRequest(testEmail, "CorrectPassword123!"))))
+                .andExpect(status().isOk())
+                .andReturn();
+        Cookie refreshCookie = loginResult.getResponse().getCookie("refresh_token");
+        String accessToken = objectMapper.readTree(loginResult.getResponse().getContentAsString()).get("accessToken").asText();
+
+        User user = userRepository.findByEmail(testEmail).orElseThrow();
+        assertThat(refreshTokenRepository.findAllByUserIdAndRevokedFalse(user.getId())).hasSize(1);
+
+        // Attempt password change with WRONG current password
+        ChangePasswordRequest badReq = new ChangePasswordRequest("WrongOldPassword!", "NewPassword123!");
+        mockMvc.perform(post("/api/v1/auth/change-password")
+                        .with(csrf())
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(badReq)))
+                .andExpect(status().isUnauthorized());
+
+        // Verify refresh token is STILL active
+        List<RefreshToken> activeTokens = refreshTokenRepository.findAllByUserIdAndRevokedFalse(user.getId());
+        assertThat(activeTokens).hasSize(1);
+        assertThat(activeTokens.get(0).isRevoked()).isFalse();
+
+        // Verify refresh still succeeds
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .with(csrf())
+                        .cookie(refreshCookie)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("SEC-01: Invalid or expired reset tokens do not revoke tokens")
+    void testInvalidOrExpiredResetTokenDoesNotRevokeTokens() throws Exception {
+        RegisterRequest registerReq = new RegisterRequest(
+                testEmail,
+                "OriginalPassword123!",
+                "InvalidReset",
+                "User",
+                testPhone
+        );
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(registerReq)))
+                .andExpect(status().isCreated());
+
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new LoginRequest(testEmail, "OriginalPassword123!"))))
+                .andExpect(status().isOk())
+                .andReturn();
+        Cookie refreshCookie = loginResult.getResponse().getCookie("refresh_token");
+
+        User user = userRepository.findByEmail(testEmail).orElseThrow();
+        assertThat(refreshTokenRepository.findAllByUserIdAndRevokedFalse(user.getId())).hasSize(1);
+
+        // 1. Completely bogus reset token
+        ResetPasswordRequest bogusReq = new ResetPasswordRequest("bogus-token-value-does-not-exist", "NewPassword123!");
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(bogusReq)))
+                .andExpect(status().isUnprocessableEntity());
+
+        // Verify refresh token is STILL active
+        assertThat(refreshTokenRepository.findAllByUserIdAndRevokedFalse(user.getId())).hasSize(1);
+
+        // 2. Expired reset token
+        String expiredRawToken = UUID.randomUUID().toString();
+        PasswordResetToken expiredToken = new PasswordResetToken();
+        expiredToken.setUser(user);
+        expiredToken.setTokenHash(RefreshTokenService.hashToken(expiredRawToken));
+        expiredToken.setExpiresAt(Instant.now().minus(1, ChronoUnit.HOURS));
+        expiredToken.setUsed(false);
+        passwordResetTokenRepository.save(expiredToken);
+
+        ResetPasswordRequest expiredReq = new ResetPasswordRequest(expiredRawToken, "NewPassword123!");
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(expiredReq)))
+                .andExpect(status().isUnprocessableEntity());
+
+        // Verify refresh token is STILL active
+        assertThat(refreshTokenRepository.findAllByUserIdAndRevokedFalse(user.getId())).hasSize(1);
+
+        // 3. User can still refresh successfully
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .with(csrf())
+                        .cookie(refreshCookie)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("SEC-01: Repeated password-reset requests do not create inconsistent token states")
+    void testRepeatedPasswordResetRequestsDoNotCreateInconsistentTokenStates() throws Exception {
+        RegisterRequest registerReq = new RegisterRequest(
+                testEmail,
+                "Password123!",
+                "Repeated",
+                "Reset",
+                testPhone
+        );
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(registerReq)))
+                .andExpect(status().isCreated());
+
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new LoginRequest(testEmail, "Password123!"))))
+                .andExpect(status().isOk())
+                .andReturn();
+        Cookie refreshCookie = loginResult.getResponse().getCookie("refresh_token");
+
+        User user = userRepository.findByEmail(testEmail).orElseThrow();
+        assertThat(refreshTokenRepository.findAllByUserIdAndRevokedFalse(user.getId())).hasSize(1);
+
+        // Request 1: Forgot password
+        mockMvc.perform(post("/api/v1/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ForgotPasswordRequest(testEmail))))
+                .andExpect(status().isOk());
+
+        List<PasswordResetToken> tokensAfterFirst = passwordResetTokenRepository.findAll();
+        assertThat(tokensAfterFirst).hasSize(1);
+        PasswordResetToken firstToken = tokensAfterFirst.get(0);
+        assertThat(firstToken.isUsed()).isFalse();
+
+        // Request 2: Forgot password again (repeated request)
+        mockMvc.perform(post("/api/v1/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ForgotPasswordRequest(testEmail))))
+                .andExpect(status().isOk());
+
+        entityManager.clear();
+
+        // Verify first token is marked used, exactly 2 tokens exist in total
+        List<PasswordResetToken> tokensAfterSecond = passwordResetTokenRepository.findAll();
+        assertThat(tokensAfterSecond).hasSize(2);
+        PasswordResetToken oldToken = passwordResetTokenRepository.findById(firstToken.getId()).orElseThrow();
+        assertThat(oldToken.isUsed()).isTrue();
+
+        PasswordResetToken latestToken = tokensAfterSecond.stream()
+                .filter(t -> !t.getId().equals(firstToken.getId()))
+                .findFirst().orElseThrow();
+        assertThat(latestToken.isUsed()).isFalse();
+
+        // Refresh token is STILL active prior to actual password reset
+        assertThat(refreshTokenRepository.findAllByUserIdAndRevokedFalse(user.getId())).hasSize(1);
+
+        // Now perform password reset using an explicit token to test the completion
+        String finalResetRaw = UUID.randomUUID().toString();
+        PasswordResetToken finalToken = new PasswordResetToken();
+        finalToken.setUser(user);
+        finalToken.setTokenHash(RefreshTokenService.hashToken(finalResetRaw));
+        finalToken.setExpiresAt(Instant.now().plus(15, ChronoUnit.MINUTES));
+        finalToken.setUsed(false);
+        passwordResetTokenRepository.save(finalToken);
+
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ResetPasswordRequest(finalResetRaw, "FinalNewPassword123!"))))
+                .andExpect(status().isOk());
+
+        // Verify refresh token is revoked
+        assertThat(refreshTokenRepository.findAllByUserIdAndRevokedFalse(user.getId())).isEmpty();
+
+        // Verify refresh fails
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .with(csrf())
+                        .cookie(refreshCookie)
+                        .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isUnauthorized());
     }
 }
